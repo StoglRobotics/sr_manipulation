@@ -54,16 +54,28 @@ from copy import deepcopy
 
 import rclpy
 from rclpy.node import Node
+import numpy
 from sr_manipulation_interfaces.srv import AddObjects, RemoveObjects, AttachObject, DetachObject
 from sr_manipulation_interfaces.msg import ObjectDescriptor, ObjectIdentifier, ServiceResult
 from moveit_msgs.msg import PlanningScene, CollisionObject, AttachedCollisionObject
 from moveit_msgs.srv import ApplyPlanningScene
-from geometry_msgs.msg import PoseStamped, Pose
+from geometry_msgs.msg import PoseStamped, Pose, Point
 #from shape_msgs.msg import SolidPrimitive
-from shape_msgs.msg import SolidPrimitive
-
+from shape_msgs.msg import SolidPrimitive, Mesh, MeshTriangle
 
 #from sr_ros2_python_utils.transforms import TCPTransforms
+
+
+# part of make_mesh copied from planning_scene_interface.py of moveit_commander
+# original authors: Ioan Sucan, Felix Messmer, same License as above
+try:
+    import pyassimp
+    from pyassimp import load
+
+except:
+    pyassimp = False
+    print("Failed to import pyassimp")
+
 
 def wait_for_response(future, client):
     rclpy.spin_until_future_complete(client, future)
@@ -116,6 +128,57 @@ class SceneManager(Node):
         
         self.get_logger().info('Scene Manager initialized')
         
+
+    # make_mesh copied from planning_scene_interface.py of moveit_commander
+    # original authors: Ioan Sucan, Felix Messmer, same License as above
+    def make_mesh(self, uri: str, scale = (1, 1, 1)):
+        if pyassimp is False:
+            self.get_logger().warn("Pyassimp not found")
+            return None
+        try:
+            # TODO(gwalck) handle uri in a cleaner way, maybe even with packages
+            if uri.startswith("file://"):
+                filename = uri[7:len(uri)]
+            else:
+                filename = uri
+            #with load('/home/guillaumew/workspaces/kh_kuka/install/moveit_wrapper/share/moveit_wrapper/resources/brick_pocket.stl') as scene:
+            with load(filename) as scene:
+                if not scene.meshes or len(scene.meshes) == 0:
+                    self.get_logger().warn("There are no meshes in the file")
+                    return None
+                if len(scene.meshes[0].faces) == 0:
+                    self.get_logger().warn("There are no faces in the mesh")
+                    return None
+                
+                mesh = Mesh()
+                first_face = scene.meshes[0].faces[0]
+                if hasattr(first_face, '__len__'):
+                    for face in scene.meshes[0].faces:
+                        if len(face) == 3:
+                            triangle = MeshTriangle()
+                            triangle.vertex_indices = numpy.array([face[0], face[1], face[2]], dtype=numpy.uint32)
+                            mesh.triangles.append(triangle)
+                elif hasattr(first_face, 'indices'):
+                    for face in scene.meshes[0].faces:
+                        if len(face.indices) == 3:
+                            triangle = MeshTriangle()
+                            triangle.vertex_indices = numpy.array([face.indices[0],
+                                                    face.indices[1],
+                                                    face.indices[2]],dtype=numpy.uint32)
+                            mesh.triangles.append(triangle)
+                else:
+                    self.get_logger().warn("Unable to build triangles from mesh due to mesh object structure")
+                    return None
+                for vertex in scene.meshes[0].vertices:
+                    point = Point()
+                    point.x = vertex[0]*scale[0]
+                    point.y = vertex[1]*scale[1]
+                    point.z = vertex[2]*scale[2]
+                    mesh.vertices.append(point)
+        except Exception as e:
+            self.get_logger().error(f'Failed to load mesh file {filename}, {e}')
+            return None
+        return mesh
 
     def get_object_stamped_pose(self, object_id):
         if not object_id in self.object_in_the_scene_storage.keys():
@@ -304,9 +367,9 @@ class SceneManager(Node):
             added_object_ids.append(object_to_add.id)
             self.object_in_the_scene_storage[object_to_add.id] = object_to_add
 
+            pose = Pose()
             if not obj.paths_to_mesh:
                 #TODO load mesh
-                pose = Pose()
                 pose.position.z = 0.11
                 pose.orientation.w = 1.0
                 primitive = SolidPrimitive()
@@ -314,17 +377,13 @@ class SceneManager(Node):
                 primitive.dimensions = [0.2, 0.3, 0.2]
                 object_to_add.primitives.append(primitive)
                 object_to_add.primitive_poses.append(pose)
-                
+            else:
+                for mesh_filename in obj.paths_to_mesh:
+                    mesh = self.make_mesh(mesh_filename)
+                    if mesh is not None:
+                        object_to_add.meshes.append(mesh)
+                        object_to_add.mesh_poses.append(pose)
 
-                '''for mesh in obj.meshes:
-                  
-                    shapes::Mesh* mesh = shapes::createMeshFromResource(request->paths_to_meshes[i]);
-                    shape_msgs::msg::Mesh custom_mesh;
-                    shapes::ShapeMsg custom_mesh_msg;  
-                    shapes::constructMsgFromShape(mesh, custom_mesh_msg);    
-                    custom_mesh = boost::get<shape_msgs::msg::Mesh>(custom_mesh_msg);
-                    request->object_details[i].meshes.push_back(custom_mesh);
-                '''
             objects_to_add.append(deepcopy(object_to_add))
         
         self.publish_planning_scene(objects_to_add)
