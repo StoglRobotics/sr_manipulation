@@ -25,12 +25,12 @@ def main(args=None):
 
     executor = MultiThreadedExecutor()
 
-    path_to_mesh = "file://" + self.package_share_dir + "/resources/brick_pocket.stl"
-    scene_manager = SceneManager("maurob_scene_manager", None, path_to_mesh)
+    scene_manager = SceneManager("maurob_scene_manager", "")
 
     try:
         rclpy.spin(scene_manager, executor)
     except KeyboardInterrupt:
+        scene_manager.get_logger().error('Exception when running Scene Manager')
         pass
 
     rclpy.shutdown()

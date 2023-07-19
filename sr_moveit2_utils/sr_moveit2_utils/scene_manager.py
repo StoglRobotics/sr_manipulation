@@ -81,7 +81,7 @@ except:
 
 
 class SceneManager(Node):
-    def __init__(self, name, parent_node, default_object_mesh_path, scene_base_frame="world"):
+    def __init__(self, name, default_object_mesh_path="", scene_base_frame="world"):
         """
         Create a new client for managing scene with MoveIt2.
 
@@ -101,27 +101,28 @@ class SceneManager(Node):
 
         #self.tcp_transforms = TCPTransforms(parent_node)
 
-        node = self
-        if parent_node is not None:
-            node = parent_node
 
         # Only a single action on the scene is allowed at a time, so use a MutuallyExclusiveCallbackGroup
-        node.server_callback_group = MutuallyExclusiveCallbackGroup()
+        self.server_callback_group = MutuallyExclusiveCallbackGroup()
         # create services
+        self.attach_srv = self.create_service(AttachObject, 'attach_object', self.attach_object_cb, callback_group=self.server_callback_group)
+        self.detach_srv = self.create_service(DetachObject, 'detach_object', self.detach_object_cb, callback_group=self.server_callback_group)
+        self.add_object_srv = self.create_service(AddObjects, 'add_objects', self.add_objects_cb, callback_group=self.server_callback_group)
+        self.remove_object_srv = self.create_service(RemoveObjects, 'remove_objects', self.remove_objects_cb, callback_group=self.server_callback_group)
         self.attach_srv = node.create_service(AttachObject, 'attach_object', self.attach_object_cb, callback_group=node.server_callback_group)
         self.detach_srv = node.create_service(DetachObject, 'detach_object', self.detach_object_cb, callback_group=node.server_callback_group)
         self.add_object_srv = node.create_service(AddObjects, 'add_objects', self.add_objects_cb, callback_group=node.server_callback_group)
         self.remove_object_srv = node.create_service(RemoveObjects, 'remove_object', self.remove_objects_cb, callback_group=node.server_callback_group)
 
-        node.outgoing_callback_group = MutuallyExclusiveCallbackGroup()
+        self.outgoing_callback_group = MutuallyExclusiveCallbackGroup()
         # Use a separate group for the clients or publisher called from within the servers. It can be Reentrant, especially to let more messages going out
 
         # create publishers to MoveIt2
-        self.planning_scene_diff_publisher = node.create_publisher(PlanningScene, "/planning_scene", 1, callback_group=node.outgoing_callback_group)
+        self.planning_scene_diff_publisher = self.create_publisher(PlanningScene, "/planning_scene", 1, callback_group=self.outgoing_callback_group)
         #self.collision_object_publisher = self.create_publisher(CollisionObject, "collision_object", 1)
 
         # create service clients to MoveIt2
-        self.planning_scene_diff_cli = self.create_client(ApplyPlanningScene, "/apply_planning_scene", callback_group=node.outgoing_callback_group)
+        self.planning_scene_diff_cli = self.create_client(ApplyPlanningScene, "/apply_planning_scene", callback_group=self.outgoing_callback_group)
         while not self.planning_scene_diff_cli.wait_for_service(timeout_sec=10.0):
             self.get_logger().info('apply_planning_scene service not available, waiting again...')
         
