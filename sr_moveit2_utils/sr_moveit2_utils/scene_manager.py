@@ -356,7 +356,7 @@ class SceneManager(Node):
 
         self.get_logger().info('Adding the objects into the world at the given location.')
         added_object_ids = self.add_objects(request.objects)
-        if not added_object_ids:
+        if added_object_ids:
             
             if len(request.objects) == len(added_object_ids):
                 response.result.state = ServiceResult.SUCCESS
@@ -364,6 +364,7 @@ class SceneManager(Node):
                 response.result.state = ServiceResult.PARTIAL
 
             response.result.message = f'Added {len(added_object_ids)} objects'
+            response.added_object_ids = added_object_ids
         else:
             response.result.state = ServiceResult.FAILED
             response.result.message = f'No objects added'
@@ -382,8 +383,8 @@ class SceneManager(Node):
             object_to_add.pose = obj.pose.pose
 
             object_to_add.operation = CollisionObject.ADD
-            added_object_ids.append(object_to_add.id)
-            self.object_in_the_scene_storage[object_to_add.id] = object_to_add
+            added_object_ids.append(obj.id)
+            self.object_in_the_scene_storage[object_to_add.id] = deepcopy(object_to_add)
 
             pose = Pose()
             if not obj.paths_to_mesh:
