@@ -57,7 +57,7 @@ from rclpy.node import Node
 from rclpy.callback_groups import ReentrantCallbackGroup, MutuallyExclusiveCallbackGroup
 from threading import Event
 import numpy
-from sr_manipulation_interfaces.srv import AddObjects, RemoveObjects, AttachObject, DetachObject
+from sr_manipulation_interfaces.srv import AddObjects, RemoveObjects, AttachObject, DetachObject, GetObjectPose
 from sr_manipulation_interfaces.msg import ObjectDescriptor, ObjectIdentifier, ServiceResult
 from moveit_msgs.msg import PlanningScene, CollisionObject, AttachedCollisionObject
 from moveit_msgs.srv import ApplyPlanningScene
@@ -109,10 +109,7 @@ class SceneManager(Node):
         self.detach_srv = self.create_service(DetachObject, 'detach_object', self.detach_object_cb, callback_group=self.server_callback_group)
         self.add_object_srv = self.create_service(AddObjects, 'add_objects', self.add_objects_cb, callback_group=self.server_callback_group)
         self.remove_object_srv = self.create_service(RemoveObjects, 'remove_objects', self.remove_objects_cb, callback_group=self.server_callback_group)
-        self.attach_srv = node.create_service(AttachObject, 'attach_object', self.attach_object_cb, callback_group=node.server_callback_group)
-        self.detach_srv = node.create_service(DetachObject, 'detach_object', self.detach_object_cb, callback_group=node.server_callback_group)
-        self.add_object_srv = node.create_service(AddObjects, 'add_objects', self.add_objects_cb, callback_group=node.server_callback_group)
-        self.remove_object_srv = node.create_service(RemoveObjects, 'remove_object', self.remove_objects_cb, callback_group=node.server_callback_group)
+        self.get_pose_srv = self.create_service(GetObjectPose, 'get_object_pose', self.get_object_pose_cb, callback_group=self.server_callback_group)
 
         self.outgoing_callback_group = MutuallyExclusiveCallbackGroup()
         # Use a separate group for the clients or publisher called from within the servers. It can be Reentrant, especially to let more messages going out
@@ -180,9 +177,25 @@ class SceneManager(Node):
             return None
         return mesh
 
+    def get_object_pose_cb(self,
+                         request: GetObjectPose.Request,
+                         response: GetObjectPose.Response) -> GetObjectPose.Response:
+        # check if the object exists at all
+        self.get_logger().info('Scene Manager get object pose') 
+        if not request.id in self.object_in_the_scene_storage:
+            response.result.state = ServiceResult.NOTFOUND
+        else:
+            pose = self.get_object_stamped_pose(request.object_id)
+            if pose is not None:
+                response.result.state = ServiceResult.SUCCESS
+                response.result.pose = pose
+            else:
+                response.result.state = ServiceResult.FAILED
+        return response
+
     def get_object_stamped_pose(self, object_id):
         if not object_id in self.object_in_the_scene_storage.keys():
-            self.get_logger().error(f"Object '{object_id}' is not known to the scene client. Did you add it?")
+            self.get_logger().error(f"Object '{object_id}' is not known to the scene manager. Did you add it?")
             return None
 
         object = self.object_in_the_scene_storage[object_id]
