@@ -54,6 +54,8 @@ from copy import deepcopy
 
 import rclpy
 from rclpy.node import Node
+from rclpy.callback_groups import ReentrantCallbackGroup, MutuallyExclusiveCallbackGroup
+from threading import Event
 import numpy
 from sr_manipulation_interfaces.srv import AddObjects, RemoveObjects, AttachObject, DetachObject
 from sr_manipulation_interfaces.msg import ObjectDescriptor, ObjectIdentifier, ServiceResult
@@ -77,18 +79,6 @@ except:
     print("Failed to import pyassimp")
 
 
-def wait_for_response(future, client):
-    rclpy.spin_until_future_complete(client, future)
-    if future.done():
-        try:
-            response = future.result()
-        except Exception as e:
-            client.get_logger().info(
-                'Service call failed %r' % (e,))
-            return None
-        else:
-            return response
-
 
 class SceneManager(Node):
     def __init__(self, name, parent_node, default_object_mesh_path, scene_base_frame="world"):
@@ -111,18 +101,27 @@ class SceneManager(Node):
 
         #self.tcp_transforms = TCPTransforms(parent_node)
 
+        node = self
+        if parent_node is not None:
+            node = parent_node
+
+        # Only a single action on the scene is allowed at a time, so use a MutuallyExclusiveCallbackGroup
+        node.server_callback_group = MutuallyExclusiveCallbackGroup()
         # create services
-        self.attach_srv = self.create_service(AttachObject, '/attach_object', self.attach_object_cb)
-        self.detach_srv = self.create_service(DetachObject, '/detach_object', self.detach_object_cb)
-        self.add_object_srv = self.create_service(AddObjects, '/add_objects', self.add_objects_cb)
-        self.remove_object_srv = self.create_service(RemoveObjects, '/remove_object', self.remove_objects_cb)
+        self.attach_srv = node.create_service(AttachObject, 'attach_object', self.attach_object_cb, callback_group=node.server_callback_group)
+        self.detach_srv = node.create_service(DetachObject, 'detach_object', self.detach_object_cb, callback_group=node.server_callback_group)
+        self.add_object_srv = node.create_service(AddObjects, 'add_objects', self.add_objects_cb, callback_group=node.server_callback_group)
+        self.remove_object_srv = node.create_service(RemoveObjects, 'remove_object', self.remove_objects_cb, callback_group=node.server_callback_group)
+
+        node.outgoing_callback_group = MutuallyExclusiveCallbackGroup()
+        # Use a separate group for the clients or publisher called from within the servers. It can be Reentrant, especially to let more messages going out
 
         # create publishers to MoveIt2
-        self.planning_scene_diff_publisher = self.create_publisher(PlanningScene, "planning_scene", 1)
+        self.planning_scene_diff_publisher = node.create_publisher(PlanningScene, "/planning_scene", 1, callback_group=node.outgoing_callback_group)
         #self.collision_object_publisher = self.create_publisher(CollisionObject, "collision_object", 1)
 
         # create service clients to MoveIt2
-        self.planning_scene_diff_cli = self.create_client(ApplyPlanningScene, "apply_planning_scene")
+        self.planning_scene_diff_cli = self.create_client(ApplyPlanningScene, "/apply_planning_scene", callback_group=node.outgoing_callback_group)
         while not self.planning_scene_diff_cli.wait_for_service(timeout_sec=10.0):
             self.get_logger().info('apply_planning_scene service not available, waiting again...')
         
@@ -267,13 +266,17 @@ class SceneManager(Node):
     def attach_object_cb(self,
                          request: AttachObject.Request,
                          response: AttachObject.Response) -> AttachObject.Response:
+        self.get_logger().info('Scene Manager attach cb')
         if not request.id in self.object_in_the_scene_storage:
             response.result.state = ServiceResult.NOTFOUND
+            self.get_logger().info('Scene Manager Object Not found')
         else:
             ret = self.attach_object(request.id, request.link_name, request.touch_links)
             if ret:
+                self.get_logger().info('Scene Manager Object attached')
                 response.result.state = ServiceResult.SUCCESS
             else:
+                self.get_logger().info('Scene Manager Object attach failed')
                 response.result.state = ServiceResult.FAILED
         return response
     
@@ -284,8 +287,8 @@ class SceneManager(Node):
         # object must be removed from the world
         object_to_attach = self.object_in_the_scene_storage.pop(object_id, None)
         
-        self.get_logger().debug(f"Initial pose of {object_to_attach.id} in {object_to_attach.header.frame_id} is {object_to_attach.pose}")
-        
+        self.get_logger().info(f"Initial pose of {object_to_attach.id} in {object_to_attach.header.frame_id} is {object_to_attach.pose}")
+        self.get_logger().info(f"Trying to attach it to {link_name}")
 
         collision_object_to_remove = CollisionObject()
         collision_object_to_remove.id = object_to_attach.id
@@ -314,7 +317,7 @@ class SceneManager(Node):
         if ret:
             # add the attached object to the store
             self.attached_object_store[object_id] = attached_collision_object
-            self.get_logger().debug(f"Object {object_id} is successfully attached to the {link_name} link.")
+            self.get_logger().info(f"Object {object_id} is successfully attached to the {link_name} link.")
         else:
             self.get_logger().error(f"Attaching object {object_id} to the link {link_name} has failed!")
             # add the object back to storage
@@ -325,9 +328,10 @@ class SceneManager(Node):
     def apply_planning_scene(self, planning_scene: PlanningScene):
         ps_req = ApplyPlanningScene.Request()
         ps_req.scene = planning_scene
-
-        self.future = self.planning_scene_diff_cli.call_async(ps_req)
-        response = wait_for_response(self.future, self)
+        # the call can be synchronous as it  lives in its own cbg
+        self.get_logger().info("apply planning scene")
+        response = self.planning_scene_diff_cli.call(ps_req)
+        self.get_logger().info("done applying planning scene")
         if not response.success:        
             return False
         return True
