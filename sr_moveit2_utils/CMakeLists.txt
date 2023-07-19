@@ -29,9 +29,9 @@ endforeach()
 ament_python_install_package(${PROJECT_NAME})
 
 # Install Python executables
-#install(PROGRAMS
-#  src/sr_moveit2_utils/scene_manager.py
-#DESTINATION lib/${PROJECT_NAME}
-#)
+install(PROGRAMS
+  sr_moveit2_utils/scene_manager_node.py
+DESTINATION lib/${PROJECT_NAME}
+)
 
 ament_package()
