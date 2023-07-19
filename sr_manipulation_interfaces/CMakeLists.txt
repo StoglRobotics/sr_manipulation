@@ -26,6 +26,7 @@ set(msg_files
 set(srv_files
   srv/AddObjects.srv
   srv/RemoveObjects.srv
+  srv/GetObjectPose.srv
   srv/AttachObject.srv
   srv/DetachObject.srv
 )
