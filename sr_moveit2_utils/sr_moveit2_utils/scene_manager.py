@@ -383,11 +383,8 @@ class SceneManager(Node):
             object_to_add.id = obj.id
             object_to_add.header.frame_id = obj.pose.header.frame_id
             object_to_add.pose = obj.pose.pose
-
             object_to_add.operation = CollisionObject.ADD
-            added_object_ids.append(obj.id)
-            self.object_in_the_scene_storage[object_to_add.id] = deepcopy(object_to_add)
-
+            
             pose = Pose()
             if not obj.paths_to_mesh:
                 #TODO load mesh
@@ -405,7 +402,9 @@ class SceneManager(Node):
                         object_to_add.meshes.append(mesh)
                         object_to_add.mesh_poses.append(pose)
 
+            self.object_in_the_scene_storage[object_to_add.id] = deepcopy(object_to_add)
             objects_to_add.append(deepcopy(object_to_add))
+            added_object_ids.append(obj.id)
         
         self.publish_planning_scene(objects_to_add)
         # TODO(gwalck) check if objects were added
