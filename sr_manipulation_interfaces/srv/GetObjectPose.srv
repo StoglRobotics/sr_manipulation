@@ -1,0 +1,6 @@
+# Request
+string id
+---
+# Response
+geometry_msgs/PoseStamped pose
+ServiceResult result

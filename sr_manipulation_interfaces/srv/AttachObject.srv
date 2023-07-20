@@ -1,0 +1,10 @@
+# Request
+string id
+# name of the link to attach the object to
+string link_name
+# set of links that the attached object is allowed to touch
+string[] touch_links
+---
+# Response
+ServiceResult result
+
