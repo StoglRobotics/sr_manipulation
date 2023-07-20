@@ -213,7 +213,7 @@ class SceneManager(Node):
         if not request.id in self.attached_object_store:
             response.result.state = ServiceResult.NOTFOUND
         else:
-            ret = self.detach_object(request.object_id)
+            ret = self.detach_object(request.id)
             if ret:
                 response.result.state = ServiceResult.SUCCESS
             else:
@@ -411,7 +411,7 @@ class SceneManager(Node):
         return added_object_ids
     
 
-    def  remove_objects_cb(self,
+    def remove_objects_cb(self,
                         request: RemoveObjects.Request,
                         response: RemoveObjects.Response) -> RemoveObjects.Response:
 
