@@ -181,7 +181,7 @@ class SceneManager(Node):
                          request: GetObjectPose.Request,
                          response: GetObjectPose.Response) -> GetObjectPose.Response:
         # check if the object exists at all
-        self.get_logger().info('Scene Manager get object pose') 
+        self.get_logger().debug('Scene Manager get object pose') 
         if not request.id in self.object_in_the_scene_storage:
             response.result.state = ServiceResult.NOTFOUND
         else:
@@ -232,7 +232,7 @@ class SceneManager(Node):
         #    object_to_detach.primitive_poses.append(relativePoseStamped.pose)
         #else:
         #    object_to_detach.primitive_poses[0] = relativePoseStamped.pose
-        self.get_logger().info(f'Detaching the object {object_id} from given frame {frame2}.')    
+        self.get_logger().debug(f'Detaching the object {object_id} from given frame {frame2}.')    
         attached_collision_object_to_detach.object.operation = CollisionObject.REMOVE
 
         ret = self.detach_collision_object(attached_collision_object_to_detach, detach_to_link)
@@ -282,17 +282,16 @@ class SceneManager(Node):
     def attach_object_cb(self,
                          request: AttachObject.Request,
                          response: AttachObject.Response) -> AttachObject.Response:
-        self.get_logger().info('Scene Manager attach cb')
         if not request.id in self.object_in_the_scene_storage:
             response.result.state = ServiceResult.NOTFOUND
-            self.get_logger().info('Scene Manager Object Not found')
+            self.get_logger().warn('Scene Manager Object Not found')
         else:
             ret = self.attach_object(request.id, request.link_name, request.touch_links)
             if ret:
-                self.get_logger().info('Scene Manager Object attached')
+                self.get_logger().debug('Scene Manager Object attached')
                 response.result.state = ServiceResult.SUCCESS
             else:
-                self.get_logger().info('Scene Manager Object attach failed')
+                self.get_logger().warn('Scene Manager Object attach failed')
                 response.result.state = ServiceResult.FAILED
         return response
     
@@ -303,8 +302,8 @@ class SceneManager(Node):
         # object must be removed from the world
         object_to_attach = self.object_in_the_scene_storage.pop(object_id, None)
         
-        self.get_logger().info(f"Initial pose of {object_to_attach.id} in {object_to_attach.header.frame_id} is {object_to_attach.pose}")
-        self.get_logger().info(f"Trying to attach it to {link_name}")
+        self.get_logger().debug(f"Initial pose of {object_to_attach.id} in {object_to_attach.header.frame_id} is {object_to_attach.pose}")
+        self.get_logger().debug(f"Trying to attach it to {link_name}")
 
         collision_object_to_remove = CollisionObject()
         collision_object_to_remove.id = object_to_attach.id
@@ -333,9 +332,9 @@ class SceneManager(Node):
         if ret:
             # add the attached object to the store
             self.attached_object_store[object_id] = attached_collision_object
-            self.get_logger().info(f"Object {object_id} is successfully attached to the {link_name} link.")
+            self.get_logger().debug(f"Object {object_id} is successfully attached to the {link_name} link.")
         else:
-            self.get_logger().error(f"Attaching object {object_id} to the link {link_name} has failed!")
+            self.get_logger().warn(f"Attaching object {object_id} to the link {link_name} has failed!")
             # add the object back to storage
             self.object_in_the_scene_storage[object_id] = object_to_attach
         return ret
@@ -345,9 +344,7 @@ class SceneManager(Node):
         ps_req = ApplyPlanningScene.Request()
         ps_req.scene = planning_scene
         # the call can be synchronous as it  lives in its own cbg
-        self.get_logger().info("apply planning scene")
         response = self.planning_scene_diff_cli.call(ps_req)
-        self.get_logger().info("done applying planning scene")
         if not response.success:        
             return False
         return True
@@ -356,7 +353,7 @@ class SceneManager(Node):
                         request: AddObjects.Request,
                         response: AddObjects.Response) -> AddObjects.Response:
 
-        self.get_logger().info('Adding the objects into the world at the given location.')
+        self.get_logger().debug('Adding the objects into the world at the given location.')
         added_object_ids = self.add_objects(request.objects)
         if added_object_ids:
             
@@ -415,7 +412,7 @@ class SceneManager(Node):
                         request: RemoveObjects.Request,
                         response: RemoveObjects.Response) -> RemoveObjects.Response:
 
-        self.get_logger().info('Removing the objects from the world.')
+        self.get_logger().debug('Removing the objects from the world.')
         removed_object_ids = self.remove_objects(request.ids)
         if not removed_object_ids:
             
