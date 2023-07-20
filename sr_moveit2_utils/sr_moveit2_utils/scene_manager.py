@@ -73,7 +73,7 @@ from rclpy.callback_groups import ReentrantCallbackGroup, MutuallyExclusiveCallb
 from threading import Event
 import numpy
 from sr_manipulation_interfaces.srv import AddObjects, RemoveObjects, AttachObject, DetachObject, GetObjectPose
-from sr_manipulation_interfaces.msg import ObjectDescriptor, ObjectIdentifier, ServiceResult
+from sr_manipulation_interfaces.msg import ObjectDescriptor, ServiceResult
 from moveit_msgs.msg import PlanningScene, CollisionObject, AttachedCollisionObject
 from moveit_msgs.srv import ApplyPlanningScene
 from geometry_msgs.msg import PoseStamped, Pose, Point

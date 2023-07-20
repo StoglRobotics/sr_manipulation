@@ -19,7 +19,6 @@ endforeach()
 
 set(msg_files
   msg/ServiceResult.msg
-  msg/ObjectIdentifier.msg
   msg/ObjectDescriptor.msg
 )
 
