@@ -221,8 +221,7 @@ class SceneManager(Node):
         return response
 
     def detach_object(self, object_id: str, detach_to_link=None):
-
-        # object must be removed from the robot
+        # object must be removed from the robot (store type is AttachedCollisionObject)
         attached_collision_object_to_detach = self.attached_object_store.pop(object_id, None)
         
         #frame1 = object_to_detach.object.header.frame_id
@@ -236,7 +235,7 @@ class SceneManager(Node):
         self.get_logger().info(f'Detaching the object {object_id} from given frame {frame2}.')    
         attached_collision_object_to_detach.object.operation = CollisionObject.REMOVE
 
-        ret = self.detach_collision_object(attached_collision_object_to_detach)
+        ret = self.detach_collision_object(attached_collision_object_to_detach, detach_to_link)
 
         if not ret:
             self.get_logger().error(f"Detaching object {object_id} has failed!")
@@ -246,17 +245,20 @@ class SceneManager(Node):
         self.get_logger().debug(f"Object {object_id} is successfully detached.")
         return True
 
-    def detach_collision_object(self, attached_collision_object: AttachedCollisionObject, link_name: str):
+    def detach_collision_object(self, attached_collision_object: AttachedCollisionObject, detach_to_link: str):
 
         #object_pose_in_attach_link_name = self.tcp_transforms.to_from_tcp_pose_conversion(object.pose, object.header.frame_id, link_name, False)
         detached_collision_object = attached_collision_object
-
+        
         # Add object again to the scene
         if detach_to_link is None:
             detach_to_link = self.scene_base_frame
         
-        collision_object_to_add = attached_collision_object.object
+        # get the collision (including its mesh) from the attached object
+        collision_object_to_add = deepcopy(attached_collision_object.object)
         collision_object_to_add.header.frame_id = detach_to_link # TODO(gwalck) unsure about that but is in the tuto
+        collision_object_to_add.operation = CollisionObject.ADD
+
         #object_pose_in_detach_to_link_name = self.tcp_transforms.to_from_tcp_pose_conversion(collision_object_to_add.pose, collision_object_to_add.header.frame_id, detach_to_link, False)
         #collision_object_to_add.mesh_poses = [object_pose_in_detach_to_link_name]
 
@@ -266,7 +268,8 @@ class SceneManager(Node):
         planning_scene = PlanningScene()
         planning_scene.is_diff = True
         # add the object to the scene
-        planning_scene.world.collision_objects.append(collision_object_to_add)
+        # currently not needed, the object is moved back to the scene automatically (https://github.com/ros-planning/moveit2/issues/1069)
+        # planning_scene.world.collision_objects.append(collision_object_to_add)
         # detach from to the robot
         planning_scene.robot_state.attached_collision_objects.append(detached_collision_object)
         planning_scene.robot_state.is_diff = True
@@ -321,7 +324,7 @@ class SceneManager(Node):
         planning_scene = PlanningScene()
         # NOT IN THE TUTO
         planning_scene.is_diff = True
-        # remove the object from the scene
+        # remove the object from the scene SHOWS A WARNING, DISABLING
         #planning_scene.world.collision_objects.append(collision_object_to_remove)
         # attach it to the robot
         planning_scene.robot_state.attached_collision_objects.append(attached_collision_object)
