@@ -5,8 +5,7 @@
   <version>0.0.0</version>
   <description>Messages, Services and Actions for manipulation (abstract from MoveIt2)</description>
   <maintainer email="guillaume.walck@stoglrobotics.de">Guillaume Walck</maintainer>
-  <license>Apache-2.0</license>
-
+  <license>BSD-3-Clause</license>
   <buildtool_depend>ament_cmake</buildtool_depend>
   <buildtool_depend>rosidl_default_generators</buildtool_depend>
 
