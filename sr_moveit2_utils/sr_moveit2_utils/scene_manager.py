@@ -185,7 +185,7 @@ class SceneManager(Node):
         if not request.id in self.object_in_the_scene_storage:
             response.result.state = ServiceResult.NOTFOUND
         else:
-            pose = self.get_object_stamped_pose(request.object_id)
+            pose = self.get_object_stamped_pose(request.id)
             if pose is not None:
                 response.result.state = ServiceResult.SUCCESS
                 response.result.pose = pose
@@ -193,7 +193,7 @@ class SceneManager(Node):
                 response.result.state = ServiceResult.FAILED
         return response
 
-    def get_object_stamped_pose(self, object_id):
+    def get_object_stamped_pose(self, object_id: str):
         if not object_id in self.object_in_the_scene_storage.keys():
             self.get_logger().error(f"Object '{object_id}' is not known to the scene manager. Did you add it?")
             return None
@@ -233,8 +233,7 @@ class SceneManager(Node):
         #    object_to_detach.primitive_poses.append(relativePoseStamped.pose)
         #else:
         #    object_to_detach.primitive_poses[0] = relativePoseStamped.pose
-        self.get_logger().info(f'Detaching the object {object_id.id} from given frame {frame2}.')    
-
+        self.get_logger().info(f'Detaching the object {object_id} from given frame {frame2}.')    
         attached_collision_object_to_detach.object.operation = CollisionObject.REMOVE
 
         ret = self.detach_collision_object(attached_collision_object_to_detach)
