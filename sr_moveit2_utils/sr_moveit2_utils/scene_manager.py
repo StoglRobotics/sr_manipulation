@@ -69,6 +69,7 @@ from copy import deepcopy
 
 import rclpy
 from rclpy.node import Node
+from rclpy.time import Duration
 from rclpy.callback_groups import ReentrantCallbackGroup, MutuallyExclusiveCallbackGroup
 from threading import Event
 import numpy
@@ -76,6 +77,7 @@ from sr_manipulation_interfaces.srv import AddObjects, RemoveObjects, AttachObje
 from sr_manipulation_interfaces.msg import ObjectDescriptor, ServiceResult
 from moveit_msgs.msg import PlanningScene, CollisionObject, AttachedCollisionObject
 from moveit_msgs.srv import ApplyPlanningScene
+from visualization_msgs.msg import MarkerArray, Marker, MeshFile
 from geometry_msgs.msg import PoseStamped, Pose, Point
 #from shape_msgs.msg import SolidPrimitive
 from shape_msgs.msg import SolidPrimitive, Mesh, MeshTriangle
@@ -110,12 +112,14 @@ class SceneManager(Node):
         # storage to track the objects
         self.object_in_the_scene_storage = {}  #dict[str, CollisionObject]
         self.attached_object_store = {} # dict[str, AttachedCollisionObject]
+        # objects not in the scene (not collision object)
+        self.object_in_marker_storage = {}
+        self.num_markers_counter = 0
         
         self.default_object_mesh_path = default_object_mesh_path
         self.scene_base_frame = scene_base_frame
 
         #self.tcp_transforms = TCPTransforms(parent_node)
-
 
         # Only a single action on the scene is allowed at a time, so use a MutuallyExclusiveCallbackGroup
         self.server_callback_group = MutuallyExclusiveCallbackGroup()
@@ -129,8 +133,9 @@ class SceneManager(Node):
         self.outgoing_callback_group = MutuallyExclusiveCallbackGroup()
         # Use a separate group for the clients or publisher called from within the servers. It can be Reentrant, especially to let more messages going out
 
-        # create publishers to MoveIt2
+        # create publishers to MoveIt2/RViz
         self.planning_scene_diff_publisher = self.create_publisher(PlanningScene, "/planning_scene", 1, callback_group=self.outgoing_callback_group)
+        self.markerarray_publisher = self.create_publisher(MarkerArray, "/scene_manager_markers", 1, callback_group=self.outgoing_callback_group)
         #self.collision_object_publisher = self.create_publisher(CollisionObject, "collision_object", 1)
 
         # create service clients to MoveIt2
@@ -140,7 +145,6 @@ class SceneManager(Node):
         
         self.get_logger().info('Scene Manager initialized')
         
-
     # make_mesh copied from planning_scene_interface.py of moveit_commander
     # original authors: Ioan Sucan, Felix Messmer, same License as above
     def make_mesh(self, uri: str, scale = (1, 1, 1)):
@@ -191,6 +195,27 @@ class SceneManager(Node):
             self.get_logger().error(f'Failed to load mesh file {filename}, {e}')
             return None
         return mesh
+
+    def collision_from_object_descriptor(self, obj:ObjectDescriptor) -> CollisionObject:
+            col_object = CollisionObject()
+            col_object.id = obj.id
+            col_object.header.frame_id = obj.pose.header.frame_id
+            col_object.pose = obj.pose.pose
+            # use given offset
+            pose = obj.shape_pose
+            if not obj.paths_to_mesh:
+                primitive = SolidPrimitive()
+                primitive.type = SolidPrimitive.BOX
+                primitive.dimensions = [obj.bbox_size.x, obj.bbox_size.y, obj.bbox_size.z]
+                col_object.primitives.append(primitive)
+                col_object.primitive_poses.append(pose)
+            else:
+                for mesh_filename in obj.paths_to_mesh:
+                    mesh = self.make_mesh(mesh_filename)
+                    if mesh is not None:
+                        col_object.meshes.append(mesh)
+                        col_object.mesh_poses.append(pose)
+            return col_object
 
     def get_object_pose_cb(self,
                          request: GetObjectPose.Request,
@@ -369,7 +394,7 @@ class SceneManager(Node):
                         response: AddObjects.Response) -> AddObjects.Response:
 
         self.get_logger().debug('Adding the objects into the world at the given location.')
-        added_object_ids = self.add_objects(request.objects)
+        added_object_ids = self.add_objects(request.objects, request.as_marker)
         if added_object_ids:
             
             if len(request.objects) == len(added_object_ids):
@@ -385,50 +410,42 @@ class SceneManager(Node):
 
         return response
 
-
-    def add_objects(self, objects: ObjectDescriptor) -> list[int]:
+    def add_objects(self, objects: ObjectDescriptor, as_markers=False) -> list[int]:
         objects_to_add = []
         added_object_ids = []
+        object_mesh_paths = []  # needed for markers to get the full resource
 
+
+        self.get_logger().warn('in add object.')
         for obj in objects:
-            object_to_add = CollisionObject()
-            object_to_add.id = obj.id
-            object_to_add.header.frame_id = obj.pose.header.frame_id
-            object_to_add.pose = obj.pose.pose
+            object_to_add = self.collision_from_object_descriptor(obj)
+            
             object_to_add.operation = CollisionObject.ADD
             
-            pose = Pose()
-            if not obj.paths_to_mesh:
-                #TODO load mesh
-                pose.position.z = 0.11
-                pose.orientation.w = 1.0
-                primitive = SolidPrimitive()
-                primitive.type = SolidPrimitive.BOX
-                primitive.dimensions = [0.2, 0.3, 0.2]
-                object_to_add.primitives.append(primitive)
-                object_to_add.primitive_poses.append(pose)
+            if as_markers:
+                self.object_in_marker_storage[object_to_add.id] = deepcopy(object_to_add)
+                if len(obj.paths_to_mesh):
+                    object_mesh_paths.append(obj.paths_to_mesh[0])
+                else:
+                    object_mesh_paths.append("")
             else:
-                for mesh_filename in obj.paths_to_mesh:
-                    mesh = self.make_mesh(mesh_filename)
-                    if mesh is not None:
-                        object_to_add.meshes.append(mesh)
-                        object_to_add.mesh_poses.append(pose)
-
-            self.object_in_the_scene_storage[object_to_add.id] = deepcopy(object_to_add)
+                self.object_in_the_scene_storage[object_to_add.id] = deepcopy(object_to_add)
             objects_to_add.append(deepcopy(object_to_add))
             added_object_ids.append(obj.id)
         
-        self.publish_planning_scene(objects_to_add)
-        # TODO(gwalck) check if objects were added
+        if as_markers:
+            self.publish_as_marker(objects_to_add, object_mesh_paths)
+        else:
+            self.publish_planning_scene(objects_to_add)
+            # TODO(gwalck) check if objects were added
         return added_object_ids
-    
 
     def remove_objects_cb(self,
                         request: RemoveObjects.Request,
                         response: RemoveObjects.Response) -> RemoveObjects.Response:
 
         self.get_logger().debug('Removing the objects from the world.')
-        removed_object_ids = self.remove_objects(request.ids)
+        removed_object_ids = self.remove_objects(request.ids, request.as_marker)
         if not removed_object_ids:
             
             if len(request.ids) == len(removed_object_ids):
@@ -443,7 +460,7 @@ class SceneManager(Node):
 
         return response
 
-    def remove_objects(self, object_ids: list[str]) -> list[int]:
+    def remove_objects(self, object_ids: list[str], as_markers=False) -> list[int]:
 
         objects_to_remove = []
         removed_object_ids = []
@@ -453,9 +470,17 @@ class SceneManager(Node):
             object_to_remove.id = id
             object_to_remove.operation = CollisionObject.REMOVE
             removed_object_ids.append(object_to_remove.id)
-            self.object_in_the_scene_storage.pop(object_to_remove.id, None)
+            if as_markers:
+                self.object_in_marker_storage.pop(object_to_remove.id, None)
+            else:
+                self.object_in_the_scene_storage.pop(object_to_remove.id, None)
             objects_to_remove.append(deepcopy(object_to_remove))
         
+        if as_markers:
+            self.publish_as_marker(object_to_remove)
+        else:
+            self.publish_planning_scene(object_to_remove)
+            # TODO(gwalck) check if objects were removed
         return removed_object_ids
     
     def publish_planning_scene(self, objects: list[CollisionObject]) -> None:
@@ -464,5 +489,48 @@ class SceneManager(Node):
 
         planning_scene.is_diff = True
         self.planning_scene_diff_publisher.publish(planning_scene)
-        
 
+    def publish_as_marker(self, objects: list[CollisionObject],
+                          mesh_paths: list[str]=[]) -> None:
+        self.get_logger().warn('publish marker')
+        marker_array = MarkerArray()
+        if len(mesh_paths) != len(objects):
+            mesh_paths = [""]*len(objects)
+        for obj, mesh_path in zip(objects, mesh_paths):
+            marker = Marker()
+            marker.header = obj.header
+            marker.ns = "scene_manager_markers"
+            marker.text = obj.id
+            self.num_markers_counter += 1
+            marker.id = self.num_markers_counter
+            # TODO handle primitives, for now only mesh
+            marker.type = Marker.MESH_RESOURCE
+            # TODO handle the already loaded mesh 
+            # mesh_file = MeshFile()
+            # marker.mesh_file = mesh_file
+            marker.action = Marker.ADD if obj.operation==CollisionObject.ADD else Marker.DELETE
+            marker.mesh_resource = mesh_path
+            marker.pose = obj.pose
+            # TODO handle local frame transform
+            # marker.pose 
+            marker.scale.x = 1.0
+            marker.scale.y = 1.0
+            marker.scale.z = 1.0
+            marker.color.r = 0.0
+            marker.color.g = 1.0
+            marker.color.b = 0.0
+            marker.color.a = 1.0
+            marker.lifetime = Duration(seconds=10000).to_msg()
+
+            marker_array.markers.append(deepcopy(marker))
+
+            # add a text as well
+            self.num_markers_counter += 1
+            marker.id = self.num_markers_counter
+            marker.scale.z = 0.04
+            marker.type = Marker.TEXT_VIEW_FACING
+            marker_array.markers.append(deepcopy(marker))
+
+        self.get_logger().warn('publishing now')
+        self.markerarray_publisher.publish(marker_array)
+        

@@ -1,5 +1,7 @@
 # Request
 ObjectDescriptor[] objects
+# if false add to moveit scene, if true publih to a markerarray topic
+bool as_marker
 ---
 # Response
 ServiceResult result
