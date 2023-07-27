@@ -415,8 +415,6 @@ class SceneManager(Node):
         added_object_ids = []
         object_mesh_paths = []  # needed for markers to get the full resource
 
-
-        self.get_logger().warn('in add object.')
         for obj in objects:
             object_to_add = self.collision_from_object_descriptor(obj)
             
@@ -492,7 +490,6 @@ class SceneManager(Node):
 
     def publish_as_marker(self, objects: list[CollisionObject],
                           mesh_paths: list[str]=[]) -> None:
-        self.get_logger().warn('publish marker')
         marker_array = MarkerArray()
         if len(mesh_paths) != len(objects):
             mesh_paths = [""]*len(objects)
@@ -531,6 +528,5 @@ class SceneManager(Node):
             marker.type = Marker.TEXT_VIEW_FACING
             marker_array.markers.append(deepcopy(marker))
 
-        self.get_logger().warn('publishing now')
         self.markerarray_publisher.publish(marker_array)
         
