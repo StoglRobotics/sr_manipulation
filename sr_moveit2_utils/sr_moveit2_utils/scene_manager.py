@@ -484,9 +484,10 @@ class SceneManager(Node):
     def publish_planning_scene(self, objects: list[CollisionObject]) -> None:
         planning_scene = PlanningScene()
         planning_scene.world.collision_objects = objects
-
         planning_scene.is_diff = True
-        self.planning_scene_diff_publisher.publish(planning_scene)
+        self.apply_planning_scene(planning_scene)
+        # do not use the publisher, for some reason if a new frame is required that is already there, it won't find it
+        # self.planning_scene_diff_publisher.publish(planning_scene)
 
     def publish_as_marker(self, objects: list[CollisionObject],
                           mesh_paths: list[str]=[]) -> None:
