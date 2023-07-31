@@ -443,8 +443,8 @@ class SceneManager(Node):
                         response: RemoveObjects.Response) -> RemoveObjects.Response:
 
         self.get_logger().debug('Removing the objects from the world.')
-        removed_object_ids = self.remove_objects(request.ids, request.as_marker)
-        if not removed_object_ids:
+        removed_object_ids = self.remove_objects(request.ids)
+        if removed_object_ids:
             
             if len(request.ids) == len(removed_object_ids):
                 response.result.state = ServiceResult.SUCCESS
@@ -453,32 +453,38 @@ class SceneManager(Node):
 
             response.result.message = f'Removed {len(removed_object_ids)} objects'
         else:
-            response.result.state = ServiceResult.ALL_FAILED
+            response.result.state = ServiceResult.FAILED
             response.result.message = f'No objects removed'
 
         return response
 
-    def remove_objects(self, object_ids: list[str], as_markers=False) -> list[int]:
+    def remove_objects(self, object_ids: list[str]) -> list[int]:
 
-        objects_to_remove = []
-        removed_object_ids = []
+        marker_objects_to_remove = []
+        scene_objects_to_remove = []
+        removed_maker_object_ids = []
+        removed_scene_object_ids = []
 
         for id in object_ids:
             object_to_remove = CollisionObject()
             object_to_remove.id = id
             object_to_remove.operation = CollisionObject.REMOVE
-            removed_object_ids.append(object_to_remove.id)
-            if as_markers:
+            if object_to_remove.id in self.object_in_marker_storage:
+                marker_objects_to_remove.append(deepcopy(object_to_remove))
+                removed_maker_object_ids.append(object_to_remove.id)
                 self.object_in_marker_storage.pop(object_to_remove.id, None)
-            else:
+            if object_to_remove.id in self.object_in_the_scene_storage:
+                scene_objects_to_remove.append(deepcopy(object_to_remove))
+                removed_scene_object_ids.append(object_to_remove.id)
                 self.object_in_the_scene_storage.pop(object_to_remove.id, None)
-            objects_to_remove.append(deepcopy(object_to_remove))
         
-        if as_markers:
-            self.publish_as_marker(object_to_remove)
-        else:
-            self.publish_planning_scene(object_to_remove)
+        if len(removed_maker_object_ids):
+            self.publish_as_marker(marker_objects_to_remove)
             # TODO(gwalck) check if objects were removed
+        if len(removed_scene_object_ids):
+            self.publish_planning_scene(scene_objects_to_remove)
+            # TODO(gwalck) check if objects were removed
+        removed_object_ids = removed_maker_object_ids + removed_scene_object_ids
         return removed_object_ids
     
     def publish_planning_scene(self, objects: list[CollisionObject]) -> None:
