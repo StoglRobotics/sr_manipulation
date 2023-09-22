@@ -19,8 +19,7 @@ from rclpy.node import Node
 from rclpy.action import ActionServer, GoalResponse, CancelResponse
 from rclpy.action.server import ServerGoalHandle, GoalStatus
 
-from iras_interfaces.msg import PlanExecState, ManipType
-from iras_interfaces.action import PlanMoveTo, Manip
+from sr_manipulation_interfaces.action import PlanMoveTo, Manip
 
 from geometry_msgs.msg import PoseStamped, Vector3, Vector3Stamped, Pose
 from moveit_msgs.msg import Grasp
@@ -32,7 +31,7 @@ from sr_moveit2_utils.scene_manager_client import SceneManagerClient
 from sr_ros2_python_utils.visualization_publishers import VisualizatonPublisher
 from sr_ros2_python_utils.transforms import TCPTransforms
 
-from sr_manipulation_interfaces.msg import ServiceResult
+from sr_manipulation_interfaces.msg import ServiceResult, PlanExecState, ManipType
 from sr_manipulation_interfaces.srv import AttachObject, DetachObject
 
 
