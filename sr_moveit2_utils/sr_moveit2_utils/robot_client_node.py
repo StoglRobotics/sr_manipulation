@@ -26,7 +26,7 @@ from moveit_msgs.msg import Grasp
 import moveit_msgs.msg
 
 from maurob_gripper.gripper_client import GripperClient
-from maurob_demos.move_client import MoveClient
+from maurob_components.move_client import MoveClient
 from sr_moveit2_utils.scene_manager_client import SceneManagerClient
 from sr_ros2_python_utils.visualization_publishers import VisualizatonPublisher
 from sr_ros2_python_utils.transforms import TCPTransforms
