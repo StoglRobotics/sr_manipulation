@@ -1,5 +1,3 @@
-# BSD 3-Clause License
-#
 # Copyright (c) 2023, Stogl Robotics Consulting
 #
 # Redistribution and use in source and binary forms, with or without
@@ -28,7 +26,9 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 # based on moveit_clients.py, scene_client 
 #
-# Author Dr Denis Stogl, Guillaume Walck
+#
+# Authors: Dr. Denis Stogl, Guillaume Walck
+#
 
 from copy import deepcopy
 import time
