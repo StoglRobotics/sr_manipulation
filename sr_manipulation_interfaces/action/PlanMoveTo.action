@@ -1,0 +1,14 @@
+# Plan and execute a motion sequence from current pose to target pose
+# target waypoints of the tool frame
+sr_manipulation_interfaces/MoveWaypoint[] targets
+# The maximum amount of time the motion planner is allowed to plan for
+float64 allowed_planning_time
+# only plan, not execution
+bool only_plan
+---
+# final state effectively reached
+PlanExecState state
+# full success or not
+bool success
+---
+PlanExecState state

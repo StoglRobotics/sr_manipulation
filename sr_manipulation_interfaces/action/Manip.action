@@ -1,0 +1,29 @@
+# Plan and execute a manipulation action
+# name of the object to manipulate
+string object_id
+# Pick description, can be partial for a single action
+moveit_msgs/Grasp pick
+# Place description, can be partial for a single action
+moveit_msgs/PlaceLocation place
+# During jaw closing and opening, the brick gets moved if there is any clearance between
+# the gripper fingers and the brick. This gripper translation gets performed right
+# before the gripper jaw movement, compensating for this
+moveit_msgs/GripperTranslation brick_grasp_clearance_compensation
+# type of manipulation actions to do based on ManipType enums
+int8[] manipulation_sequence
+# if true no attach/detach is performed
+bool disable_scene_handling
+# only plan, not execution
+bool only_plan
+# enforce the planner profile (empty means use default)
+string planner_profile
+---
+# final state effectively reached
+PlanExecState state
+# full success or not
+bool success
+---
+# manipulation action currently performed
+int8 current_manip
+int8 current_step
+PlanExecState state
