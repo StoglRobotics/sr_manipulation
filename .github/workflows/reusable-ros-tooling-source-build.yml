@@ -37,7 +37,9 @@ jobs:
           target-ros2-distro: ${{ inputs.ros_distro }}
           # build all packages listed in the meta package
           package-name:
-            $PKG_NAME$
+            sr_moveit2_utils
+            sr_manipulation_interfaces
+
           vcs-repo-file-url: |
             https://raw.githubusercontent.com/ros2/ros2/${{ inputs.ros2_repo_branch }}/ros2.repos
             https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/sr_manipulation.${{ inputs.ros_distro }}.repos?token=${{ secrets.GITHUB_TOKEN }}

@@ -18,7 +18,9 @@ jobs:
         distribution: humble
         linter: ${{ matrix.linter }}
         package-name:
-          $PKG_NAME$
+          sr_moveit2_utils
+          sr_manipulation_interfaces
+
 
   ament_lint_100:
     name: ament_${{ matrix.linter }}
@@ -36,4 +38,6 @@ jobs:
         linter: cpplint
         arguments: "--linelength=100 --filter=-whitespace/newline"
         package-name:
+          sr_moveit2_utils
+          sr_manipulation_interfaces
           sr_manipulation

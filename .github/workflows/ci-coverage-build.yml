@@ -26,7 +26,9 @@ jobs:
           import-token: ${{ secrets.GITHUB_TOKEN }}
           # build all packages listed in the meta package
           package-name:
-            $PKG_NAME$
+            sr_moveit2_utils
+            sr_manipulation_interfaces
+
           vcs-repo-file-url: |
             https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/sr_manipulation-not-released.${{ env.ROS_DISTRO }}.repos?token=${{ secrets.GITHUB_TOKEN }}
           colcon-defaults: |
