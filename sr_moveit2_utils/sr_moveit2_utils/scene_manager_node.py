@@ -34,8 +34,8 @@ import rclpy
 from rclpy.executors import MultiThreadedExecutor
 from sr_moveit2_utils.scene_manager import SceneManager
 
-def main(args=None):
 
+def main(args=None):
     rclpy.init(args=args)
 
     executor = MultiThreadedExecutor()
@@ -45,7 +45,7 @@ def main(args=None):
     try:
         rclpy.spin(scene_manager, executor)
     except KeyboardInterrupt:
-        scene_manager.get_logger().error('Exception when running Scene Manager')
+        scene_manager.get_logger().error("Exception when running Scene Manager")
         pass
 
     rclpy.shutdown()

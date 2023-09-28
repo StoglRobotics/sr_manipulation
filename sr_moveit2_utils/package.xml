@@ -5,7 +5,7 @@
   <version>0.1.0</version>
   <description>Helpers for MoveIt2</description>
   <maintainer email="guillaume.walck@stoglrobotics.de">Guillaume Walck</maintainer>
-  
+
   <license>BSD-3-Clause</license>
 
   <depend>rclpy</depend>
