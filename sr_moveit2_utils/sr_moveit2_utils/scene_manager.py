@@ -385,10 +385,10 @@ class SceneManager(Node):
         ps_req.scene = planning_scene
         # the call can be synchronous as it  lives in its own cbg
         response = self.planning_scene_diff_cli.call(ps_req)
-        if not response.success:        
+        if not response.success:
             return False
         return True
-        
+
     def add_objects_cb(self,
                         request: AddObjects.Request,
                         response: AddObjects.Response) -> AddObjects.Response:
@@ -396,7 +396,7 @@ class SceneManager(Node):
         self.get_logger().debug('Adding the objects into the world at the given location.')
         added_object_ids = self.add_objects(request.objects, request.as_marker)
         if added_object_ids:
-            
+
             if len(request.objects) == len(added_object_ids):
                 response.result.state = ServiceResult.SUCCESS
             else:

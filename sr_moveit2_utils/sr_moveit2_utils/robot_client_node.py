@@ -63,13 +63,31 @@ class RobotClient(Node):
         # declare params
         self.declare_parameter('simulation', True)
         # read params
-        self.sim  = self.get_parameter('simulation').get_parameter_value().bool_value
-        if self.sim:
+        sim  = self.get_parameter('simulation').get_parameter_value().bool_value
+        if sim:
             self.get_logger().info('Using simulation')
 
+        # parameters
+        self.declare_parameter("tf_prefix", "")
+        self.tf_prefix = self.get_parameter("tf_prefix").value
+        self.declare_parameter("chain_base_link", "base_link")
+        self.chain_base_link = self.get_parameter("chain_base_link").value
+        self.declare_parameter("chain_tip_link", "tcp_link")
+        self.chain_tip_link = self.get_parameter("chain_tip_link").value
+        self.declare_parameter("tool_link", "gripper_link")
+        self.tool_link = self.get_parameter("tool_link").value
+        self.declare_parameter("allowed_touch_links", ["tcp_link", "gripper_base"])
+        self.allowed_touch_links = self.get_parameter("allowed_touch_links").value
+
+        self.declare_parameter("gripper_driver_ns", "/")
+        self.gripper_driver_ns = self.get_parameter("gripper_driver_ns").value
+
+        self.get_logger().info(f"Using '{self.chain_base_link}' as chain base link.")
+        self.get_logger().info(f"Using '{self.chain_tip_link}' as chain tip (TCP) link.")
+        self.get_logger().info(f"Using '{self.tool_link}' as tool link.")
+        self.get_logger().info(f"Allowed touch links are: '{self.allowed_touch_links}'.")
+
         # defaults
-        self.robot_base_frame = "base_link"
-        
         self.active_goal = None
         self.plan_move_to_feedback = PlanMoveTo.Feedback()
         self.manip_feedback = Manip.Feedback()
@@ -102,12 +120,10 @@ class RobotClient(Node):
                                      ManipType.MANIP_GRIPPER_ADJUST: "Adjust Gripper gauge",
                                      ManipType.MANIP_GRIPPER_OPEN: "Open Gripper",
                                      ManipType.MANIP_GRIPPER_CLOSE: "Close Gripper"}
-        self.attach_link = "tcp_link"
-        self.allowed_touch_links = ["tcp_link", "moving_jaw_base", "gripper_base", "fix_jaw_clamp_finger", "moving_jaw_clamp_finger"]
 
         # tools
         self.visualization_publisher = VisualizatonPublisher(self)
-        self.tcp_transforms = TCPTransforms(self)
+        self.tcp_transforms = TCPTransforms(self, self.chain_tip_link, self.tool_link)
 
 
         # Services to MoveItWrapper
@@ -118,11 +134,11 @@ class RobotClient(Node):
         self.scene_client = SceneManagerClient()
 
         # Gripper handler
-        self.gripper_client = GripperClient(sim=self.sim, move_client=self.move_client)
+        self.gripper_client = GripperClient(tf_prefix=self.tf_prefix, tcp_link_name=self.chain_tip_link, driver_ns=self.gripper_driver_ns, sim=sim, move_client=self.move_client)
         #self.gripper_client = GripperClient(node=self, sim=self.sim, move_client=self.move_client, svc_cbg=self.service_callback_group, sub_cbg=self.subpub_callback_group)
 
         self.init_gripper()
-    
+
         # action servers
         # plan_move_to and manipulate action servers are not allowed to run simultaneously. so we use a Mutually exclusive callback group
         self.action_callback_group = MutuallyExclusiveCallbackGroup()
@@ -155,7 +171,7 @@ class RobotClient(Node):
 
         # initialize Gripper
         response = self.gripper_client.send_close_brake_request()
-        if not self.sim and not response.success:
+        if not response.success:
             self.get_logger().fatal("CR Brake is not set correctly")
             exit(-1)
         # display change gauge pose
@@ -225,7 +241,7 @@ class RobotClient(Node):
             blending_radii = []
             for i, target in enumerate(request.targets):
                 self.get_logger().warn(f'  Target {i} pose x {target.pose.pose.position.x}.')
-                if (target.pose.header.frame_id != self.robot_base_frame):
+                if (target.pose.header.frame_id != self.chain_base_link):
                     pose = self.compute_manip_pose(target.pose)
                 else:
                     pose = target.pose.pose
@@ -234,7 +250,7 @@ class RobotClient(Node):
                 planner_profiles.append(target.planner_profile)
                 velocity_scaling_factors.append(target.velocity_scaling_factor)
                 blending_radii.append(target.blending_radius)
-                self.visualization_publisher.publish_pose_as_transform(pose, self.robot_base_frame, "mortar_pose_" + str(i), is_static=False)
+                self.visualization_publisher.publish_pose_as_transform(pose, self.chain_base_link, "mortar_pose_" + str(i), is_static=False)
                 
             ret = self.move_client.send_move_seq_request(poses, carts, velocity_scaling_factors,
                                   blending_radii, planner_profiles, request.allowed_planning_time)
@@ -244,7 +260,7 @@ class RobotClient(Node):
 
         else:
             for i, target in enumerate(request.targets):
-                if (target.pose.header.frame_id != self.robot_base_frame):
+                if (target.pose.header.frame_id != self.chain_base_link):
                     pose = self.compute_manip_pose(target.pose)
                 else:
                     pose = target.pose.pose
@@ -314,7 +330,8 @@ class RobotClient(Node):
     def manip_cancel_cb(self, request):
         #TODO stop current execution cleanly ?
         return CancelResponse.ACCEPT
-        
+
+
     def compute_manip_pose(self, source_pose: PoseStamped,
                            use_offset: bool=False, offset_dir: Vector3Stamped=Vector3Stamped(), offset_distance: float=0.0,
                            apply_tool_offset: bool=True) -> Pose:
@@ -331,7 +348,7 @@ class RobotClient(Node):
         self.get_logger().debug(f'Manip computed pose source frame ({pose_source_frame.header.frame_id}).')
         return self.tcp_transforms.to_from_tcp_pose_conversion(pose_source_frame.pose,
                                                                pose_source_frame.header.frame_id,
-                                                               self.robot_base_frame, apply_tool_offset)
+                                                               self.chain_base_link, apply_tool_offset)
 
     def manip_execute_cb(self, goal_handle: ServerGoalHandle):
         request = self.active_goal
@@ -370,7 +387,7 @@ class RobotClient(Node):
                                                                           request.pick.pre_grasp_approach.desired_distance)
                     if reach_pose_robot_base_frame is None:
                         break
-                    self.visualization_publisher.publish_pose_as_transform(reach_pose_robot_base_frame, self.robot_base_frame, "pre_grasp_pose_base_link", is_static=True)
+                    self.visualization_publisher.publish_pose_as_transform(reach_pose_robot_base_frame, self.chain_base_link, "pre_grasp_pose_base_link", is_static=True)
                 if manip == ManipType.MANIP_REACH_PREPLACE:
                     # compute pre-place pose
                     reach_pose_robot_base_frame = self.compute_manip_pose(request.place.place_pose, True,
@@ -378,7 +395,7 @@ class RobotClient(Node):
                                                                           request.place.pre_place_approach.desired_distance)
                     if reach_pose_robot_base_frame is None:
                         break
-                    self.visualization_publisher.publish_pose_as_transform(reach_pose_robot_base_frame, self.robot_base_frame, "pre_place_pose_base_link", is_static=True)
+                    self.visualization_publisher.publish_pose_as_transform(reach_pose_robot_base_frame, self.chain_base_link, "pre_place_pose_base_link", is_static=True)
             
                 # perform the action
                 # do the actual planning and execution
@@ -409,13 +426,13 @@ class RobotClient(Node):
                     move_pose_robot_base_frame = self.compute_manip_pose(request.pick.grasp_pose)
                     if move_pose_robot_base_frame is None:
                         break
-                    self.visualization_publisher.publish_pose_as_transform(move_pose_robot_base_frame, self.robot_base_frame, "grasp_pose_base_link", is_static=True)
+                    self.visualization_publisher.publish_pose_as_transform(move_pose_robot_base_frame, self.chain_base_link, "grasp_pose_base_link", is_static=True)
                 if manip == ManipType.MANIP_MOVE_PLACE:
                     # compute place pose
                     move_pose_robot_base_frame = self.compute_manip_pose(request.place.place_pose)
                     if move_pose_robot_base_frame is None:
                         break
-                    self.visualization_publisher.publish_pose_as_transform(move_pose_robot_base_frame, self.robot_base_frame, "place_pose_base_link", is_static=True)
+                    self.visualization_publisher.publish_pose_as_transform(move_pose_robot_base_frame, self.chain_base_link, "place_pose_base_link", is_static=True)
                 # with offset
                 if manip == ManipType.MANIP_MOVE_POSTGRASP:
                     # compute post-pick pose
@@ -424,7 +441,7 @@ class RobotClient(Node):
                                                                          request.pick.post_grasp_retreat.desired_distance)
                     if move_pose_robot_base_frame is None:
                         break
-                    self.visualization_publisher.publish_pose_as_transform(move_pose_robot_base_frame, self.robot_base_frame, "post_grasp_pose_base_link", is_static=True)
+                    self.visualization_publisher.publish_pose_as_transform(move_pose_robot_base_frame, self.chain_base_link, "post_grasp_pose_base_link", is_static=True)
                 if manip == ManipType.MANIP_MOVE_POSTPLACE:
                     # compute post-place pose
                     move_pose_robot_base_frame = self.compute_manip_pose(request.place.place_pose, True,
@@ -432,21 +449,21 @@ class RobotClient(Node):
                                                                          request.place.post_place_retreat.desired_distance)
                     if move_pose_robot_base_frame is None:
                         break
-                    self.visualization_publisher.publish_pose_as_transform(move_pose_robot_base_frame, self.robot_base_frame, "post_place_pose_base_link", is_static=True)
+                    self.visualization_publisher.publish_pose_as_transform(move_pose_robot_base_frame, self.chain_base_link, "post_place_pose_base_link", is_static=True)
                 if manip == ManipType.MANIP_MOVE_GRASP_ADJUST:
                     move_pose_robot_base_frame = self.compute_manip_pose(request.pick.grasp_pose, True,
                                                                           request.brick_grasp_clearance_compensation.direction,
                                                                           request.brick_grasp_clearance_compensation.desired_distance)
                     if move_pose_robot_base_frame is None:
                         break
-                    self.visualization_publisher.publish_pose_as_transform(move_pose_robot_base_frame, self.robot_base_frame, "pre_grip_pose_compensation_link", is_static=True)
+                    self.visualization_publisher.publish_pose_as_transform(move_pose_robot_base_frame, self.chain_base_link, "pre_grip_pose_compensation_link", is_static=True)
                 if manip == ManipType.MANIP_MOVE_PLACE_ADJUST:
                     move_pose_robot_base_frame = self.compute_manip_pose(request.place.place_pose, True,
                                                                           request.brick_grasp_clearance_compensation.direction,
                                                                           request.brick_grasp_clearance_compensation.desired_distance)
                     if move_pose_robot_base_frame is None:
                         break
-                    self.visualization_publisher.publish_pose_as_transform(move_pose_robot_base_frame, self.robot_base_frame, "pre_grip_pose_compensation_link", is_static=True)
+                    self.visualization_publisher.publish_pose_as_transform(move_pose_robot_base_frame, self.chain_base_link, "pre_grip_pose_compensation_link", is_static=True)
                 # perform the action
                 # do the actual planning and execution
                 ret = self.move_client.send_move_request(move_pose_robot_base_frame, cartesian_trajectory=True,
@@ -466,7 +483,7 @@ class RobotClient(Node):
                     # prepare posture
                     # TODO the gripper client, in addition to specific commands should also handle generic commands like a posture, which is then compatible to all moveit executors using a grasp posture
                     # apply on gripper
-                    if not self.sim and not self.gripper_client.sensor_status[1] and not self.gripper_client.sensor_status[3]:
+                    if not self.gripper_client.sensor_status[1] and not self.gripper_client.sensor_status[3]:
                         self.get_logger().debug(' Close gripper.')
                         gripper_response = self.gripper_client.send_close_request()
                         if gripper_response is None:
@@ -475,13 +492,13 @@ class RobotClient(Node):
                             result.state.exec_message = "Failed to close gripper"
                             goal_handle.abort()
                             break
-                    elif not self.sim:
-                        self.get_logger().warn(f' Not closing gripper due to status of sensor {self.gripper_client.sensor_status}')       
+                    else:
+                        self.get_logger().warn(f' Not closing gripper due to status of sensor {self.gripper_client.sensor_status}')
                     # additionally handle attach
                     if manip == ManipType.MANIP_GRASP:
                         # if success attach
                         if not request.disable_scene_handling:
-                            ret = self.scene_client.attach(request.object_id, self.attach_link, self.allowed_touch_links)
+                            ret = self.scene_client.attach(request.object_id, self.chain_tip_link, self.allowed_touch_links)
                         else:
                             continue
                         if not self.did_manip_plan_succeed(ret, "Gripper attach/detach/adjust", goal_handle):
@@ -490,11 +507,11 @@ class RobotClient(Node):
                             break
                         else:
                             continue
-                    
+
                 if manip == ManipType.MANIP_RELEASE or manip == ManipType.MANIP_GRIPPER_OPEN:
                     # prepare posture
                     # apply on gripper
-                    if not self.sim and not self.gripper_client.sensor_status[0] and not self.gripper_client.sensor_status[2]:
+                    if not self.gripper_client.sensor_status[0] and not self.gripper_client.sensor_status[2]:
                         self.get_logger().debug(' Open gripper.')
                         gripper_response = self.gripper_client.send_open_request()
                         if gripper_response is None:
@@ -503,7 +520,7 @@ class RobotClient(Node):
                             result.state.exec_message = "Failed to open gripper"
                             goal_handle.abort()
                             break
-                    elif not self.sim:
+                    else:
                         self.get_logger().warn(f' Not opening gripper due to status of sensor {self.gripper_client.sensor_status}')
                     # additionally handle detach
                     if manip == ManipType.MANIP_RELEASE:

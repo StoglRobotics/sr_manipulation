@@ -52,7 +52,7 @@ def wait_for_response(future, client):
                 return None
             else:
                 return response
-            
+
 
 class SceneManagerClient(Node):
     def __init__(self):
