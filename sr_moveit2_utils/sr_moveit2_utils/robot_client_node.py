@@ -400,12 +400,12 @@ class RobotClient(Node):
                 # perform the action
                 # do the actual planning and execution
 
+                if manip == ManipType.MANIP_REACH_PREGRASP:
+                    ret = self.move_client.send_move_request(reach_pose_robot_base_frame, cartesian_trajectory=False,
+                                                 planner_profile=request.planner_profile if request.planner_profile else "ompl")
                 if manip == ManipType.MANIP_REACH_PREPLACE:
                     ret = self.move_client.send_move_request(reach_pose_robot_base_frame, cartesian_trajectory=False,
                                                              planner_profile=request.planner_profile if request.planner_profile else "ompl_with_constraints")
-                else:
-                    ret = self.move_client.send_move_request(reach_pose_robot_base_frame, cartesian_trajectory=False,
-                                                 planner_profile=request.planner_profile if request.planner_profile else "ompl")
 
                 if not self.did_manip_plan_succeed(ret, "Reach", goal_handle):
                     result.state.exec_state = PlanExecState.EXEC_ERROR
