@@ -21,16 +21,16 @@ foreach(Dependency IN ITEMS ${THIS_PACKAGE_INCLUDE_DEPENDS})
 endforeach()
 
 set(msg_files
-  "msg/ServiceResult.msg"
-  "msg/ObjectDescriptor.msg"
-  "msg/PlanExecState.msg"
-  "msg/ManipType.msg"
-  "msg/MoveWaypoint.msg"
+  msg/ServiceResult.msg
+  msg/ObjectDescriptor.msg
+  msg/PlanExecState.msg
+  msg/ManipType.msg
+  msg/MoveWaypoint.msg
 )
 
 set(action_files
-  "action/PlanMoveTo.action"
-  "action/Manip.action"
+  action/PlanMoveTo.action
+  action/Manip.action
 )
 
 set(srv_files
