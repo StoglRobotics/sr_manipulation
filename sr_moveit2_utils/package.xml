@@ -5,16 +5,13 @@
   <version>0.1.0</version>
   <description>Helpers for MoveIt2</description>
   <maintainer email="guillaume.walck@stoglrobotics.de">Guillaume Walck</maintainer>
-  
+
   <license>BSD-3-Clause</license>
 
   <depend>rclpy</depend>
   <depend>sr_manipulation_interfaces</depend>
   <depend>moveit_msgs</depend>
   <exec_depend>python3-pyassimp</exec_depend>
-
-  <test_depend>ament_lint_auto</test_depend>
-  <test_depend>ament_lint_common</test_depend>
 
   <export>
     <build_type>ament_python</build_type>
