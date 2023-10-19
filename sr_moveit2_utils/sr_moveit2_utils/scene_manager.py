@@ -98,8 +98,10 @@ from shape_msgs.msg import SolidPrimitive, Mesh, MeshTriangle
 # original authors: Ioan Sucan, Felix Messmer, same License as above
 try:
     import pyassimp
-    from pyassimp import load
-except ImportError as e:
+    from pyassimp import load as pyassimp_load
+    from importlib.metadata import version as libversion
+
+except:
     pyassimp = False
     print(f"Failed to import pyassimp: {e}")
 
@@ -115,6 +117,17 @@ class SceneManager(Node):
         :param scene_base_frame: Base frame of the scene (default: "world")
         """
         super().__init__(name)
+
+        # Check if correct version of pyassimp is used. There version have to be different then 4.1.4
+        if pyassimp is False:
+            self.get_logger().fatal("pyassimp library not found!")
+            return None
+        else:
+            if libversion("pyassimp") == "4.1.4":
+                self.get_logger().fatal(
+                    "Pyassimp version '4.1.4' has a bug - please install a newer version, e.g., using 'pip3 install -U pyassimp'!"
+                )
+                return None
 
         # storage to track the objects
         self.object_in_the_scene_storage = {}  # dict[str, CollisionObject]
@@ -224,7 +237,8 @@ class SceneManager(Node):
                 filename = uri[len(file_prefix) : len(uri)]  # noqa: E203 - whitespace before ':'
             else:
                 filename = uri
-            with load(filename) as scene:
+            # with pyassimp_load('/home/guillaumew/workspaces/kh_kuka/install/moveit_wrapper/share/moveit_wrapper/resources/brick_pocket.stl') as scene:
+            with pyassimp_load(filename) as scene:
                 if not scene.meshes or len(scene.meshes) == 0:
                     self.get_logger().warn("There are no meshes in the file")
                     return None
