@@ -1,7 +1,6 @@
-#!/usr/bin/python
-# Copyright (c) 2023, Stogl Robotics Consulting
-#
 # BSD 3-Clause License
+#
+# Copyright (c) 2023, Stogl Robotics Consulting
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
@@ -27,27 +26,3 @@
 # CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-#
-#
-# Author Denis Stogl, Guillaume Walck
-#
-
-import rclpy
-from rclpy.executors import MultiThreadedExecutor
-from sr_moveit2_utils.scene_manager import SceneManager
-
-def main(args=None):
-
-    rclpy.init(args=args)
-
-    executor = MultiThreadedExecutor()
-
-    scene_manager = SceneManager("scene_manager", "")
-
-    try:
-        rclpy.spin(scene_manager, executor)
-    except KeyboardInterrupt:
-        scene_manager.get_logger().error('Exception when running Scene Manager')
-        pass
-
-    rclpy.shutdown()

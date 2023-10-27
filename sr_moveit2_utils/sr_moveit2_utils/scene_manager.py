@@ -393,7 +393,7 @@ class SceneManager(Node):
                         request: AddObjects.Request,
                         response: AddObjects.Response) -> AddObjects.Response:
 
-        self.get_logger().debug('Adding the objects into the world at the given location.')
+        self.get_logger().info('Adding the objects into the world at the given location.')
         added_object_ids = self.add_objects(request.objects, request.as_marker)
         if added_object_ids:
 
@@ -407,7 +407,7 @@ class SceneManager(Node):
         else:
             response.result.state = ServiceResult.FAILED
             response.result.message = f'No objects added'
-
+        self.get_logger().info('Sending response')
         return response
 
     def add_objects(self, objects: ObjectDescriptor, as_markers=False) -> list[int]:
