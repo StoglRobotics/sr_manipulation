@@ -47,6 +47,7 @@ from moveit_msgs.msg import Grasp
 from sr_moveit2_utils.move_client import MoveClient
 import moveit_msgs.msg
 from sr_ros2_python_utils.transforms import TCPTransforms
+from sr_ros2_python_utils.visualization_publishers import VisualizatonPublisher
 import numpy as np
 
 def wait_for_response(future, client):
@@ -63,7 +64,7 @@ def wait_for_response(future, client):
                 return response
 
 
-class MachineTendingClient(Node):
+class MoveItClient(Node):
     def __init__(self):
         """
         Create a new client for managing manipulation requests.
@@ -120,9 +121,24 @@ class MachineTendingClient(Node):
                                                 execute_callback=self.manip_execute_cb,
                                                 callback_group=self.action_callback_group)
         
-        self.tcp_transforms = TCPTransforms(self)
+        self.attach_object_cli = self.create_client(AttachObject, '/attach_object', callback_group = self.service_callback_group)
+        self.detach_object_cli = self.create_client(DetachObject, '/detach_object', callback_group = self.service_callback_group)
 
-        self.chain_base_link = "base_link"
+        self.declare_parameter("tf_prefix", "")
+        self.tf_prefix = self.get_parameter("tf_prefix").value
+        self.declare_parameter("chain_base_link", "base_link")
+        self.chain_base_link = self.get_parameter("chain_base_link").value
+        self.declare_parameter("chain_tip_link", "tcp_link")
+        self.chain_tip_link = self.get_parameter("chain_tip_link").value
+        self.declare_parameter("tool_link", "gripper_link")
+        self.tool_link = self.get_parameter("tool_link").value
+        self.declare_parameter("allowed_touch_links", ["tcp_link", "gripper_base"])
+        self.allowed_touch_links = self.get_parameter("allowed_touch_links").value
+
+        self.tcp_transforms = TCPTransforms(self)
+        self.visualization_publisher = VisualizatonPublisher(self)
+
+        self.plan_first = True
 
         self.get_logger().info('Robot Client ready')
 
@@ -292,6 +308,7 @@ class MachineTendingClient(Node):
         result = Manip.Result()
         result.state.plan_state = PlanExecState.PLAN_UNKNOWN
         result.state.exec_state = PlanExecState.EXEC_UNKNOWN
+        self.plan_first = self.active_goal.only_plan
 
         # initialize feedback
         self.manip_feedback.state.plan_state = PlanExecState.PLAN_UNKNOWN
@@ -324,7 +341,7 @@ class MachineTendingClient(Node):
                                                                           request.pick.pre_grasp_approach.desired_distance)
                     if reach_pose_robot_base_frame is None:
                         break
-                    # self.visualization_publisher.publish_pose_as_transform(reach_pose_robot_base_frame, self.chain_base_link, "pre_grasp_pose_base_link", is_static=True)
+                    self.visualization_publisher.publish_pose_as_transform(reach_pose_robot_base_frame, self.chain_base_link, "pre_grasp_pose_base_link", is_static=True)
                 if manip == ManipType.MANIP_REACH_PREPLACE:
                     # compute pre-place pose
                     reach_pose_robot_base_frame = self.compute_manip_pose(request.place.place_pose, True,
@@ -332,17 +349,17 @@ class MachineTendingClient(Node):
                                                                           request.place.pre_place_approach.desired_distance)
                     if reach_pose_robot_base_frame is None:
                         break
-                    # self.visualization_publisher.publish_pose_as_transform(reach_pose_robot_base_frame, self.chain_base_link, "pre_place_pose_base_link", is_static=True)
+                    self.visualization_publisher.publish_pose_as_transform(reach_pose_robot_base_frame, self.chain_base_link, "pre_place_pose_base_link", is_static=True)
             
                 # perform the action
                 # do the actual planning and execution
 
                 if manip == ManipType.MANIP_REACH_PREGRASP:
                     ret = self.move_client.send_move_request(reach_pose_robot_base_frame, cartesian_trajectory=False,
-                                                 planner_profile=request.planner_profile if request.planner_profile else "ompl")
+                                                 planner_profile=request.planner_profile if request.planner_profile else "ompl", plan_only=self.plan_first)
                 if manip == ManipType.MANIP_REACH_PREPLACE:
                     ret = self.move_client.send_move_request(reach_pose_robot_base_frame, cartesian_trajectory=False,
-                                                             planner_profile=request.planner_profile if request.planner_profile else "ompl_with_constraints")
+                                                             planner_profile=request.planner_profile if request.planner_profile else "ompl_with_constraints", plan_only=self.plan_first)
 
                 if not self.did_manip_plan_succeed(ret, "Reach", goal_handle):
                     result.state.exec_state = PlanExecState.EXEC_ERROR
@@ -363,13 +380,13 @@ class MachineTendingClient(Node):
                     move_pose_robot_base_frame = self.compute_manip_pose(request.pick.grasp_pose)
                     if move_pose_robot_base_frame is None:
                         break
-                    # self.visualization_publisher.publish_pose_as_transform(move_pose_robot_base_frame, self.chain_base_link, "grasp_pose_base_link", is_static=True)
+                    self.visualization_publisher.publish_pose_as_transform(move_pose_robot_base_frame, self.chain_base_link, "grasp_pose_base_link", is_static=True)
                 if manip == ManipType.MANIP_MOVE_PLACE:
                     # compute place pose
                     move_pose_robot_base_frame = self.compute_manip_pose(request.place.place_pose)
                     if move_pose_robot_base_frame is None:
                         break
-                    # self.visualization_publisher.publish_pose_as_transform(move_pose_robot_base_frame, self.chain_base_link, "place_pose_base_link", is_static=True)
+                    self.visualization_publisher.publish_pose_as_transform(move_pose_robot_base_frame, self.chain_base_link, "place_pose_base_link", is_static=True)
                 # with offset
                 if manip == ManipType.MANIP_MOVE_POSTGRASP:
                     # compute post-pick pose
@@ -378,7 +395,7 @@ class MachineTendingClient(Node):
                                                                          request.pick.post_grasp_retreat.desired_distance)
                     if move_pose_robot_base_frame is None:
                         break
-                    # self.visualization_publisher.publish_pose_as_transform(move_pose_robot_base_frame, self.chain_base_link, "post_grasp_pose_base_link", is_static=True)
+                    self.visualization_publisher.publish_pose_as_transform(move_pose_robot_base_frame, self.chain_base_link, "post_grasp_pose_base_link", is_static=True)
                 if manip == ManipType.MANIP_MOVE_POSTPLACE:
                     # compute post-place pose
                     move_pose_robot_base_frame = self.compute_manip_pose(request.place.place_pose, True,
@@ -386,21 +403,21 @@ class MachineTendingClient(Node):
                                                                          request.place.post_place_retreat.desired_distance)
                     if move_pose_robot_base_frame is None:
                         break
-                    # self.visualization_publisher.publish_pose_as_transform(move_pose_robot_base_frame, self.chain_base_link, "post_place_pose_base_link", is_static=True)
+                    self.visualization_publisher.publish_pose_as_transform(move_pose_robot_base_frame, self.chain_base_link, "post_place_pose_base_link", is_static=True)
                 if manip == ManipType.MANIP_MOVE_GRASP_ADJUST:
                     move_pose_robot_base_frame = self.compute_manip_pose(request.pick.grasp_pose, True,
                                                                           request.brick_grasp_clearance_compensation.direction,
                                                                           request.brick_grasp_clearance_compensation.desired_distance)
                     if move_pose_robot_base_frame is None:
                         break
-                    # self.visualization_publisher.publish_pose_as_transform(move_pose_robot_base_frame, self.chain_base_link, "pre_grip_pose_compensation_link", is_static=True)
+                    self.visualization_publisher.publish_pose_as_transform(move_pose_robot_base_frame, self.chain_base_link, "pre_grip_pose_compensation_link", is_static=True)
                 if manip == ManipType.MANIP_MOVE_PLACE_ADJUST:
                     move_pose_robot_base_frame = self.compute_manip_pose(request.place.place_pose, True,
                                                                           request.brick_grasp_clearance_compensation.direction,
                                                                           request.brick_grasp_clearance_compensation.desired_distance)
                     if move_pose_robot_base_frame is None:
                         break
-                    # self.visualization_publisher.publish_pose_as_transform(move_pose_robot_base_frame, self.chain_base_link, "pre_grip_pose_compensation_link", is_static=True)
+                    self.visualization_publisher.publish_pose_as_transform(move_pose_robot_base_frame, self.chain_base_link, "pre_grip_pose_compensation_link", is_static=True)
                 # perform the action
                 # do the actual planning and execution
                 ret = self.move_client.send_move_request(move_pose_robot_base_frame, cartesian_trajectory=True,
@@ -413,7 +430,35 @@ class MachineTendingClient(Node):
                     break
                 else:
                     continue
-
+            # Attach/Detach actions
+            if manip in [ManipType.MANIP_GRASP, ManipType.MANIP_RELEASE, ManipType.MANIP_GRIPPER_OPEN, ManipType.MANIP_GRIPPER_CLOSE]:
+                if manip == ManipType.MANIP_GRASP or manip == ManipType.MANIP_GRIPPER_CLOSE:   
+                    # additionally handle attach
+                    if manip == ManipType.MANIP_GRASP:
+                        # if success attach
+                        if not request.disable_scene_handling:
+                            ret = self.attach(request.object_id, self.tool_link, self.allowed_touch_links)
+                        else:
+                            continue
+                        if not self.did_manip_plan_succeed(ret, "Gripper attach/detach/adjust", goal_handle):
+                            result.state.exec_state = PlanExecState.EXEC_ERROR
+                            result.state.exec_message = "Failed to attach/detach"
+                            break
+                        else:
+                            continue
+                if manip == ManipType.MANIP_RELEASE or manip == ManipType.MANIP_GRIPPER_OPEN:
+                    if manip == ManipType.MANIP_RELEASE:
+                        #if success detach
+                        if not request.disable_scene_handling:
+                            ret = self.detach(request.object_id)
+                        else:
+                            continue
+                        if not self.did_manip_plan_succeed(ret, "Gripper attach/detach/adjust", goal_handle):
+                            result.state.exec_state = PlanExecState.EXEC_ERROR
+                            result.state.exec_message = "Failed to attach/detach"
+                            break
+                        else:
+                            continue
             # end while loop
         if goal_handle.status != GoalStatus.STATUS_ABORTED:
             result.success = True
@@ -458,3 +503,27 @@ class MachineTendingClient(Node):
         # use default velocity scaling if not defined
         if not velocity_scaling_factor:
             velocity_scaling_factor = self.default_velocity_scaling_factor
+    
+    def attach(self, id:str, attach_link:str, allowed_touch_links:list[str]):
+        req = AttachObject.Request()
+        req.id = id
+        req.link_name = attach_link
+        req.touch_links = allowed_touch_links
+        response = self.attach_object_cli.call(req)
+        # response = wait_for_response(future, self)
+        if response.result.state != ServiceResult.SUCCESS:
+            self.get_logger().error(f"Attach object {id} has failed.")
+            return False
+        self.get_logger().info(f"Successfully attached object {id} to {attach_link}.")
+        return True
+    
+    def detach(self, id:str):
+        req = DetachObject.Request()
+        req.id = id
+        response = self.detach_object_cli.call(req)
+        # response = wait_for_response(future, self)
+        if response.result.state != ServiceResult.SUCCESS:
+            self.get_logger().error(f"Detach object {id} has failed.")
+            return False
+        self.get_logger().info(f"Successfully detached object {id}.")
+        return True

@@ -46,7 +46,7 @@ class MoveClient(Node):
             self.get_logger().info('stop_trajectory_execution service not available, waiting again...')
     
 
-    def send_move_request(self, pose:Pose, cartesian_trajectory:bool=True, planner_profile:str="", velocity_scaling_factor=None, allowed_planning_time:float=0.0):
+    def send_move_request(self, pose:Pose, cartesian_trajectory:bool=True, planner_profile:str="", velocity_scaling_factor=None, allowed_planning_time:float=0.0, plan_only:bool=True):
         # use default velocity scaling if not defined
         if not velocity_scaling_factor:
             velocity_scaling_factor = self.default_velocity_scaling_factor
@@ -57,6 +57,7 @@ class MoveClient(Node):
         self.req_move.planner_profile = planner_profile
         self.req_move.velocity_scaling_factor = velocity_scaling_factor
         self.req_move.allowed_planning_time = allowed_planning_time
+        self.req_move.only_plan = plan_only
         future = self.move_cli.call_async(self.req_move)
         response = wait_for_response(future, self)
         if not response.success:

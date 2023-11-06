@@ -282,7 +282,12 @@ class SceneManager(Node):
             # re-add the object to the store
             self.attached_object_store[object_id] = attached_collision_object_to_detach
             return False
-        self.get_logger().debug(f"Object {object_id} is successfully detached.")
+        # Load in the object once more
+        self.object_in_the_scene_storage[object_id] = attached_collision_object_to_detach.object
+        # self.object_in_the_scene_storage[object_id].pose = attached_collision_object_to_detach.object.pose
+        self.object_in_the_scene_storage[object_id].operation = CollisionObject.ADD
+        # self.get_logger().info(f"storage id {object_id} is put in: {attached_collision_object_to_detach.object}")
+        self.get_logger().info(f"Object {attached_collision_object_to_detach} is successfully detached.")
         return True
 
     def detach_collision_object(self, attached_collision_object: AttachedCollisionObject, detach_to_link: str):
@@ -328,10 +333,10 @@ class SceneManager(Node):
         else:
             ret = self.attach_object(request.id, request.link_name, request.touch_links)
             if ret:
-                self.get_logger().debug('Scene Manager Object attached')
+                self.get_logger().info('Scene Manager Object attached')
                 response.result.state = ServiceResult.SUCCESS
             else:
-                self.get_logger().warn('Scene Manager Object attach failed')
+                self.get_logger().info('Scene Manager Object attach failed')
                 response.result.state = ServiceResult.FAILED
         return response
     
@@ -341,15 +346,15 @@ class SceneManager(Node):
 
         # object must be removed from the world
         object_to_attach = self.object_in_the_scene_storage.pop(object_id, None)
-        
-        self.get_logger().debug(f"Initial pose of {object_to_attach.id} in {object_to_attach.header.frame_id} is {object_to_attach.pose}")
-        self.get_logger().debug(f"Trying to attach it to {link_name}")
+        self.get_logger().info(f"Initial pose of {object_to_attach.id} in {object_to_attach.header.frame_id} is {object_to_attach.pose}")
+        self.get_logger().info(f"Trying to attach it to {link_name}")
 
         collision_object_to_remove = CollisionObject()
         collision_object_to_remove.id = object_to_attach.id
         collision_object_to_remove.header.frame_id = self.scene_base_frame # TODO(gwalck) unsure about that but is in the tuto
         collision_object_to_remove.operation = CollisionObject.REMOVE
         
+        self.get_logger().info(f"Attach_object is {object_to_attach}")
         #TODO(gwalck) cleanup the duplicate objects coming form the fusion of 2 functions
         #object_pose_in_attach_link_name = self.tcp_transforms.to_from_tcp_pose_conversion(object.pose, object.header.frame_id, link_name, False)
         #self.get_logger().debug(f"Calculated target pose of {object_to_attach.id} in {link_name} is {object_pose_in_attach_link_name}")

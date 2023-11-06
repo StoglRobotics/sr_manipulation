@@ -42,6 +42,7 @@ set(srv_files
   srv/MoveToPose.srv
   srv/MoveToPoseSeq.srv
   srv/SetScalingFactor.srv
+  srv/AttachDetachObject.srv
 )
 
 rosidl_generate_interfaces(${PROJECT_NAME}
