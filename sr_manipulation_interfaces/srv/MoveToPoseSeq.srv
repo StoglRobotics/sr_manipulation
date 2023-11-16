@@ -1,0 +1,17 @@
+# vector of poses to be executed in a sequence
+geometry_msgs/Pose[] poses
+# use cartesian motion for the matching target poses instead of joint space motion
+bool[] carts
+# velocity scaling factors for the matching target poses
+float64[] velocity_scaling_factors
+# blending radii for the matching target poses
+float64[] blending_radii
+# names of the motion planner profile (pre-set of planning_pipeline, planner_id, constraints ...) to use for the matching target poses
+# If no name is specified, a default motion planner will be used
+string[] planner_profiles
+# The maximum amount of time the motion planner is allowed to plan for
+float64 allowed_planning_time
+# only plan, not execution
+bool only_plan
+---
+bool success
