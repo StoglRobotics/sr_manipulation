@@ -1,3 +1,5 @@
+# BSD 3-Clause License
+#
 # Copyright (c) 2023, Stogl Robotics Consulting
 #
 # Redistribution and use in source and binary forms, with or without
@@ -26,74 +28,54 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 # based on moveit_clients.py, scene_client 
 #
-#
-# Authors: Dr. Denis Stogl, Guillaume Walck
-#
+# Author Dr Denis Stogl, Guillaume Walck
+
 
 from copy import deepcopy
-import time
-import numpy as np
+
 import rclpy
 from rclpy.executors import MultiThreadedExecutor
-from threading import Event
-from rclpy.callback_groups import ReentrantCallbackGroup, MutuallyExclusiveCallbackGroup
 from rclpy.node import Node
 from rclpy.action import ActionServer, GoalResponse, CancelResponse
 from rclpy.action.server import ServerGoalHandle, GoalStatus
-
+from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
 from sr_manipulation_interfaces.action import PlanMoveTo, Manip
 from sr_manipulation_interfaces.msg import ManipType, PlanExecState, ServiceResult
 from sr_manipulation_interfaces.srv import AttachObject, DetachObject
 
 from geometry_msgs.msg import PoseStamped, Vector3, Vector3Stamped, Pose
 from moveit_msgs.msg import Grasp
+from sr_moveit2_utils.move_client import MoveClient
 import moveit_msgs.msg
-
-from maurob_gripper.gripper_client import GripperClient
-from maurob_components.move_client import MoveClient
-from sr_manipulation.sr_moveit2_utils.robot_client_modules.scene_manager_client import SceneManagerClient
-from sr_ros2_python_utils.visualization_publishers import VisualizatonPublisher
 from sr_ros2_python_utils.transforms import TCPTransforms
+from sr_ros2_python_utils.visualization_publishers import VisualizatonPublisher
+import numpy as np
+
+def wait_for_response(future, client):
+    while rclpy.ok():
+        rclpy.spin_once(client)
+        if future.done():
+            try:
+                response = future.result()
+            except Exception as e:
+                client.get_logger().info(
+                    'Service call to move_to_pose or move_to_pose_seq failed %r' % (e,))
+                return None
+            else:
+                return response
 
 
-class RobotClient(Node):
-    def __init__(self, name, default_velocity_scaling_factor=0.5):
-        super().__init__(name)
-
-        # declare params
-        self.declare_parameter('simulation', True)
-        # read params
-        sim  = self.get_parameter('simulation').get_parameter_value().bool_value
-        if sim:
-            self.get_logger().info('Using simulation')
-
-        # parameters
-        self.declare_parameter("tf_prefix", "")
-        self.tf_prefix = self.get_parameter("tf_prefix").value
-        self.declare_parameter("chain_base_link", "base_link")
-        self.chain_base_link = self.get_parameter("chain_base_link").value
-        self.declare_parameter("chain_tip_link", "tcp_link")
-        self.chain_tip_link = self.get_parameter("chain_tip_link").value
-        self.declare_parameter("tool_link", "gripper_link")
-        self.tool_link = self.get_parameter("tool_link").value
-        self.declare_parameter("allowed_touch_links", ["tcp_link", "gripper_base"])
-        self.allowed_touch_links = self.get_parameter("allowed_touch_links").value
-
-        self.declare_parameter("gripper_driver_ns", "/")
-        self.gripper_driver_ns = self.get_parameter("gripper_driver_ns").value
-
-        self.get_logger().info(f"Using '{self.chain_base_link}' as chain base link.")
-        self.get_logger().info(f"Using '{self.chain_tip_link}' as chain tip (TCP) link.")
-        self.get_logger().info(f"Using '{self.tool_link}' as tool link.")
-        self.get_logger().info(f"Allowed touch links are: '{self.allowed_touch_links}'.")
+class MoveItClient(Node):
+    def __init__(self):
+        """
+        Create a new client for managing manipulation requests.
+        """
+        super().__init__('moveit_client')
 
         # defaults
         self.active_goal = None
         self.plan_move_to_feedback = PlanMoveTo.Feedback()
         self.manip_feedback = Manip.Feedback()
-        # raises type object 'ManipType' has no attribute '_RobotClient__constants'
-        #self.SUPPORTED_MANIP_ACTIONS = [value for key, value in ManipType.__constants.iteritems()] #TODO why does this not work 
-        
         self.SUPPORTED_MANIP_ACTIONS = [ManipType.MANIP_MOVE_GRASP,
                                         ManipType.MANIP_MOVE_POSTGRASP,
                                         ManipType.MANIP_MOVE_PLACE,
@@ -120,27 +102,11 @@ class RobotClient(Node):
                                      ManipType.MANIP_GRIPPER_ADJUST: "Adjust Gripper gauge",
                                      ManipType.MANIP_GRIPPER_OPEN: "Open Gripper",
                                      ManipType.MANIP_GRIPPER_CLOSE: "Close Gripper"}
-
-        # tools
-        self.visualization_publisher = VisualizatonPublisher(self)
-        self.tcp_transforms = TCPTransforms(self, self.chain_tip_link, self.tool_link)
-
-
         # Services to MoveItWrapper
         # Moveit Motion or Scene changes should not happen in parallel, so use same Mutually exclusive callback group
         self.service_callback_group = MutuallyExclusiveCallbackGroup()
-        self.move_client = MoveClient(default_velocity_scaling_factor=default_velocity_scaling_factor)
+        self.move_client = MoveClient(default_velocity_scaling_factor=1.0)
 
-        self.scene_client = SceneManagerClient()
-
-        # Gripper handler
-        self.gripper_client = GripperClient(tf_prefix=self.tf_prefix, tcp_link_name=self.chain_tip_link, driver_ns=self.gripper_driver_ns, sim=sim, move_client=self.move_client)
-        #self.gripper_client = GripperClient(node=self, sim=self.sim, move_client=self.move_client, svc_cbg=self.service_callback_group, sub_cbg=self.subpub_callback_group)
-
-        self.init_gripper()
-
-        # action servers
-        # plan_move_to and manipulate action servers are not allowed to run simultaneously. so we use a Mutually exclusive callback group
         self.action_callback_group = MutuallyExclusiveCallbackGroup()
         self.plan_move_to_server = ActionServer(self, PlanMoveTo, '/plan_move_to',
                                                 goal_callback=self.plan_move_to_goal_cb,
@@ -156,30 +122,27 @@ class RobotClient(Node):
                                                 execute_callback=self.manip_execute_cb,
                                                 callback_group=self.action_callback_group)
         
+        self.attach_object_cli = self.create_client(AttachObject, '/attach_object', callback_group = self.service_callback_group)
+        self.detach_object_cli = self.create_client(DetachObject, '/detach_object', callback_group = self.service_callback_group)
+
+        self.declare_parameter("tf_prefix", "")
+        self.tf_prefix = self.get_parameter("tf_prefix").value
+        self.declare_parameter("chain_base_link", "base_link")
+        self.chain_base_link = self.get_parameter("chain_base_link").value
+        self.declare_parameter("chain_tip_link", "tcp_link")
+        self.chain_tip_link = self.get_parameter("chain_tip_link").value
+        self.declare_parameter("tool_link", "gripper_link")
+        self.tool_link = self.get_parameter("tool_link").value
+        self.declare_parameter("allowed_touch_links", ["tcp_link", "gripper_base"])
+        self.allowed_touch_links = self.get_parameter("allowed_touch_links").value
+
+        self.tcp_transforms = TCPTransforms(self)
+        self.visualization_publisher = VisualizatonPublisher(self)
+
+        self.plan_first = True
 
         self.get_logger().info('Robot Client ready')
 
-        # # JTC direct control
-        # self.positions_error = [6]
-        # self.error_received = False
-        #
-        # self.jtc_cmd_publisher = self.create_publisher(JointTrajectory, "/position_trajectory_controller/joint_trajectory", 1)
-        # self.jtc_state_subscriber = self.create_subscription(JointTrajectoryControllerState, "/position_trajectory_controller/state", self._jtc_state_callback, 1)
-
-
-    def init_gripper(self):
-
-        # initialize Gripper
-        response = self.gripper_client.send_close_brake_request()
-        if not response.success:
-            self.get_logger().fatal("CR Brake is not set correctly")
-            exit(-1)
-        # display change gauge pose
-        self.visualization_publisher.publish_pose_stamped_as_transform(self.gripper_client.change_gauge_start, "CG_start",True)
-        self.visualization_publisher.publish_pose_stamped_as_transform(self.gripper_client.change_gauge_ref, "CG_Hole",True)
-        self.visualization_publisher.publish_pose_stamped_as_transform(self.gripper_client.change_gauge_above, "CG_Above",True)
-        self.visualization_publisher.publish_pose_stamped_as_transform(self.gripper_client.change_gauge_small_to_wide, "CG_S2W",True)
-        self.visualization_publisher.publish_pose_stamped_as_transform(self.gripper_client.change_gauge_wide_to_small, "CG_W2S",True)
 
     def plan_move_to_goal_cb(self, goal: PlanMoveTo.Goal):
         self.get_logger().debug('Received new PlanMoveTo goal...')
@@ -200,17 +163,7 @@ class RobotClient(Node):
             self.active_goal = goal
             self.get_logger().debug('PlanMoveTo goal accepted.')
             return GoalResponse.ACCEPT
-
-    #def plan_move_to_accepted_cb(self, goal_handle: ServerGoalHandle):
-        
-    #    if (goal_handle.status == GoalStatus.STATUS_ACCEPTED):
-    #        self.get_logger().info('PlanMoveTo accepted goal stored.')
-    #    else:
-    #        self.get_logger().info('PlanMoveTo goal not yet accepted.')
-
-        #self.assertEqual(goal_handle.status, GoalStatus.STATUS_ACCEPTED)
-        #self.assertEqual(goal_handle.goal_id, goal_uuid)
-
+    
     def plan_move_to_cancel_cb(self, request):
         #TODO handle stop trajectory if we where moving
         if self.send_stop_request():
@@ -314,7 +267,6 @@ class RobotClient(Node):
         return True
 
     def manip_goal_cb(self, goal: Manip.Goal):
-        self.get_logger().debug('Received new Manip goal...')
         if self.active_goal is not None:
             self.get_logger().warn('Manip goal rejected because there is already an active goal.')
             return GoalResponse.REJECT
@@ -336,6 +288,7 @@ class RobotClient(Node):
                            use_offset: bool=False, offset_dir: Vector3Stamped=Vector3Stamped(), offset_distance: float=0.0,
                            apply_tool_offset: bool=True) -> Pose:
         pose_source_frame = deepcopy(source_pose)
+        self.get_logger().info("GETTING FRAMES" + str(offset_dir.header.frame_id) + "\nand\n" + str(pose_source_frame.header.frame_id))
         if use_offset:
             offset_transformed = self.tcp_transforms.to_from_tcp_vec3_conversion(offset_dir, offset_dir.header.frame_id, pose_source_frame.header.frame_id)
             #  add offset
@@ -351,10 +304,12 @@ class RobotClient(Node):
                                                                self.chain_base_link, apply_tool_offset)
 
     def manip_execute_cb(self, goal_handle: ServerGoalHandle):
+        self.get_logger().info('executing')
         request = self.active_goal
         result = Manip.Result()
         result.state.plan_state = PlanExecState.PLAN_UNKNOWN
         result.state.exec_state = PlanExecState.EXEC_UNKNOWN
+        self.plan_first = self.active_goal.only_plan
 
         # initialize feedback
         self.manip_feedback.state.plan_state = PlanExecState.PLAN_UNKNOWN
@@ -402,10 +357,10 @@ class RobotClient(Node):
 
                 if manip == ManipType.MANIP_REACH_PREGRASP:
                     ret = self.move_client.send_move_request(reach_pose_robot_base_frame, cartesian_trajectory=False,
-                                                 planner_profile=request.planner_profile if request.planner_profile else "ompl")
+                                                 planner_profile=request.planner_profile if request.planner_profile else "ompl", plan_only=self.plan_first)
                 if manip == ManipType.MANIP_REACH_PREPLACE:
                     ret = self.move_client.send_move_request(reach_pose_robot_base_frame, cartesian_trajectory=False,
-                                                             planner_profile=request.planner_profile if request.planner_profile else "ompl_with_constraints")
+                                                             planner_profile=request.planner_profile if request.planner_profile else "ompl_with_constraints", plan_only=self.plan_first)
 
                 if not self.did_manip_plan_succeed(ret, "Reach", goal_handle):
                     result.state.exec_state = PlanExecState.EXEC_ERROR
@@ -476,29 +431,14 @@ class RobotClient(Node):
                     break
                 else:
                     continue
-
-            # gripper actions
+            # Attach/Detach actions
             if manip in [ManipType.MANIP_GRASP, ManipType.MANIP_RELEASE, ManipType.MANIP_GRIPPER_OPEN, ManipType.MANIP_GRIPPER_CLOSE]:
-                if manip == ManipType.MANIP_GRASP or manip == ManipType.MANIP_GRIPPER_CLOSE:
-                    # prepare posture
-                    # TODO the gripper client, in addition to specific commands should also handle generic commands like a posture, which is then compatible to all moveit executors using a grasp posture
-                    # apply on gripper
-                    if not self.gripper_client.sensor_status[1] and not self.gripper_client.sensor_status[3]:
-                        self.get_logger().debug(' Close gripper.')
-                        gripper_response = self.gripper_client.send_close_request()
-                        if gripper_response is None:
-                            self.get_logger().error('Failed to close the gripper')
-                            result.state.exec_state = PlanExecState.EXEC_ERROR
-                            result.state.exec_message = "Failed to close gripper"
-                            goal_handle.abort()
-                            break
-                    else:
-                        self.get_logger().warn(f' Not closing gripper due to status of sensor {self.gripper_client.sensor_status}')
+                if manip == ManipType.MANIP_GRASP or manip == ManipType.MANIP_GRIPPER_CLOSE:   
                     # additionally handle attach
                     if manip == ManipType.MANIP_GRASP:
                         # if success attach
                         if not request.disable_scene_handling:
-                            ret = self.scene_client.attach(request.object_id, self.chain_tip_link, self.allowed_touch_links)
+                            ret = self.attach(request.object_id, self.tool_link, self.allowed_touch_links)
                         else:
                             continue
                         if not self.did_manip_plan_succeed(ret, "Gripper attach/detach/adjust", goal_handle):
@@ -507,89 +447,19 @@ class RobotClient(Node):
                             break
                         else:
                             continue
-
                 if manip == ManipType.MANIP_RELEASE or manip == ManipType.MANIP_GRIPPER_OPEN:
-                    # prepare posture
-                    # apply on gripper
-                    if not self.gripper_client.sensor_status[0] and not self.gripper_client.sensor_status[2]:
-                        self.get_logger().debug(' Open gripper.')
-                        gripper_response = self.gripper_client.send_open_request()
-                        if gripper_response is None:
-                            self.get_logger().error('Failed to open the gripper')
-                            result.state.exec_state = PlanExecState.EXEC_ERROR
-                            result.state.exec_message = "Failed to open gripper"
-                            goal_handle.abort()
-                            break
-                    else:
-                        self.get_logger().warn(f' Not opening gripper due to status of sensor {self.gripper_client.sensor_status}')
-                    # additionally handle detach
                     if manip == ManipType.MANIP_RELEASE:
                         #if success detach
                         if not request.disable_scene_handling:
-                            ret = self.scene_client.detach(request.object_id)
+                            ret = self.detach(request.object_id)
                         else:
                             continue
-
                         if not self.did_manip_plan_succeed(ret, "Gripper attach/detach/adjust", goal_handle):
                             result.state.exec_state = PlanExecState.EXEC_ERROR
                             result.state.exec_message = "Failed to attach/detach"
                             break
                         else:
                             continue
-                
-                
-            # gripper special action
-            if manip == ManipType.MANIP_GRIPPER_ADJUST:
-                # depending on the passed grasp, adjust the gripper gauge
-                if not len(request.pick.grasp_posture.joint_names) or 'gauge' not in request.pick.grasp_posture.joint_names or len(request.pick.grasp_posture.points) < 1:
-                    self.get_logger().error('Cannot adjust gripper, no gauge joint and/or points provided')
-                    result.state.exec_state = PlanExecState.EXEC_ERROR
-                    result.state.exec_message = "Failed to adjust gripper"
-                    goal_handle.abort()
-                    break
-                gauge_value = None
-                for i in range (len(request.pick.grasp_posture.joint_names)):
-                    if 'gauge' == request.pick.grasp_posture.joint_names[i]:
-                        gauge_value = request.pick.grasp_posture.points[0].positions[i]
-                        break
-                
-                if gauge_value is not None:
-                    self.get_logger().debug(f' Adjusting gripper to gauge {gauge_value}')
-                    if gauge_value > 0.125:  # large
-                        # TODO move the test of the gripper state to the change_gauge function so that RobotClient does not have to know about status
-                        if self.gripper_client.sensor_status[4] and not self.gripper_client.sensor_status[5]:
-                            ret = self.gripper_client.change_gauge(wide=True)
-                            if ret.success is not True:
-                                self.get_logger().error(f'Cannot adjust gripper, with error {ret.error_msg}')
-                                result.state.exec_state = PlanExecState.EXEC_ERROR
-                                result.state.exec_message = ret.error_msg
-                                break
-                        elif not self.gripper_client.sensor_status[4] and not self.gripper_client.sensor_status[5]:
-                            self.get_logger().error(f'Cannot adjust gripper, unknown state')
-                            result.state.exec_state = PlanExecState.EXEC_ERROR
-                            result.state.exec_message = "Cannot adjust gripper, unknown state"
-                            break
-                        else:
-                            self.get_logger().info(f'No need to adjust gripper')
-                            
-                    else:  # small
-                        if not self.gripper_client.sensor_status[4] and self.gripper_client.sensor_status[5]:
-                            ret = self.gripper_client.change_gauge(wide=False)
-                            if ret.success is not True:
-                                self.get_logger().error(f'Cannot adjust gripper, with error {ret.error_msg}')
-                                result.state.exec_state = PlanExecState.EXEC_ERROR
-                                result.state.exec_message = ret.error_msg
-                                break
-                        elif not self.gripper_client.sensor_status[4] and not self.gripper_client.sensor_status[5]:
-                            self.get_logger().error(f'Cannot adjust gripper, unknown state')
-                            result.state.exec_state = PlanExecState.EXEC_ERROR
-                            result.state.exec_message = "Cannot adjust gripper, unknown state"
-                            break
-                        else:
-                            self.get_logger().info(f'No need to adjust gripper')
-
-                continue
-
             # end while loop
         if goal_handle.status != GoalStatus.STATUS_ABORTED:
             result.success = True
@@ -634,38 +504,30 @@ class RobotClient(Node):
         # use default velocity scaling if not defined
         if not velocity_scaling_factor:
             velocity_scaling_factor = self.default_velocity_scaling_factor
-
     
-    # # Methods that enable direct access to JTC controller without collision check and planning
-    # def _jtc_state_callback(self, msg):
-    #   if (len(msg.joint_names) == 6 and len(msg.error.positions) == 6):
-    #       self.positions_error = msg.error.positions
-    #       self.error_received = True
-    #
-    #
-    # def send_joint_command_without_collision_check_and_planning(self, target_joint_states):
-    #   jtc_cmd = JointTrajectory()
-    #   jtc_cmd.joint_names = ["joint_a1", "joint_a2", "joint_a3", "joint_a4", "joint_a5", "joint_a6"]
-    #
-    #   jtc_point = JointTrajectoryPoint()
-    #   jtc_point.positions = target_joint_states
-    #
-    #   jtc_cmd.points.append(jtc_point)
-    #
-    #   jtc_cmd_publisher.publish(jtc_cmd)
-    #   test_mortar_private_node.get_logger().info("New target to Trajectory Contrller is sent: " + str(jtc_cmd))
-    #   self.error_received = False
-    #
-    #   while True:
-    #       time.sleep(0.2)
-    #       test_mortar_private_node.get_logger().info("Testing if goalis reached")
-    #       rclpy.spin_once(test_mortar_private_node)
-    #       if self.error_received:
-    #           error_sum = sum(self.positions_error)
-    #           test_mortar_private_node.get_logger().info("Sum of errors is: " + str(error_sum))
-    #           if error_sum < 0.001:
-    #               test_mortar_private_node.get_logger().info("Goal joint state reached!")
-    #               break
+    def attach(self, id:str, attach_link:str, allowed_touch_links:list[str]):
+        req = AttachObject.Request()
+        req.id = id
+        req.link_name = attach_link
+        req.touch_links = allowed_touch_links
+        response = self.attach_object_cli.call(req)
+        # response = wait_for_response(future, self)
+        if response.result.state != ServiceResult.SUCCESS:
+            self.get_logger().error(f"Attach object {id} has failed.")
+            return False
+        self.get_logger().info(f"Successfully attached object {id} to {attach_link}.")
+        return True
+    
+    def detach(self, id:str):
+        req = DetachObject.Request()
+        req.id = id
+        response = self.detach_object_cli.call(req)
+        # response = wait_for_response(future, self)
+        if response.result.state != ServiceResult.SUCCESS:
+            self.get_logger().error(f"Detach object {id} has failed.")
+            return False
+        self.get_logger().info(f"Successfully detached object {id}.")
+        return True
 
 def main(args=None):
 
@@ -673,10 +535,10 @@ def main(args=None):
 
     executor = MultiThreadedExecutor()
     
-    rc = RobotClient("robot_client", 1.0)
+    mc = MoveItClient()
 
     try:
-        rclpy.spin(rc, executor)
+        rclpy.spin(mc, executor)
     except KeyboardInterrupt:
         pass
 

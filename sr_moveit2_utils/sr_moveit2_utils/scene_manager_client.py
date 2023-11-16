@@ -36,6 +36,7 @@ from copy import deepcopy
 import rclpy
 from rclpy.node import Node
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
+from rclpy.executors import MultiThreadedExecutor
 from sr_manipulation_interfaces.srv import AddObjects, RemoveObjects, AttachObject, DetachObject
 from sr_manipulation_interfaces.msg import ServiceResult
 
@@ -97,3 +98,18 @@ class SceneManagerClient(Node):
             return False
         self.get_logger().debug(f"Successfully detached object {id}.")
         return True
+
+def main(args=None):
+
+    rclpy.init(args=args)
+
+    executor = MultiThreadedExecutor()
+    
+    sc = SceneManagerClient()
+
+    try:
+        rclpy.spin(sc, executor)
+    except KeyboardInterrupt:
+        pass
+
+    rclpy.shutdown()
