@@ -75,7 +75,7 @@ from threading import Event
 import numpy
 from sr_manipulation_interfaces.srv import AddObjects, RemoveObjects, AttachObject, DetachObject, GetObjectPose
 from sr_manipulation_interfaces.msg import ObjectDescriptor, ServiceResult
-from moveit_msgs.msg import PlanningScene, CollisionObject, AttachedCollisionObject
+from moveit_msgs.msg import PlanningScene, CollisionObject, AttachedCollisionObject, PlanningSceneWorld
 from moveit_msgs.srv import ApplyPlanningScene
 from visualization_msgs.msg import MarkerArray, Marker, MeshFile
 from geometry_msgs.msg import PoseStamped, Pose, Point
@@ -120,7 +120,8 @@ class SceneManager(Node):
         self.scene_base_frame = scene_base_frame
 
         #self.tcp_transforms = TCPTransforms(parent_node)
-
+        # We create a new subscriber to the /monitored_planning_scene topic
+        self.planning_scene_subscriber = self.create_subscription(PlanningScene, "/monitored_planning_scene", self.planning_scene_cb, 10)
         # Only a single action on the scene is allowed at a time, so use a MutuallyExclusiveCallbackGroup
         self.server_callback_group = MutuallyExclusiveCallbackGroup()
         # create services
@@ -144,7 +145,29 @@ class SceneManager(Node):
             self.get_logger().info('apply_planning_scene service not available, waiting again...')
         
         self.get_logger().info('Scene Manager initialized')
+    
+    def planning_scene_cb(self, msg):
+        if len(msg.world.collision_objects)>0:
+            self.get_logger().warn(f"Found world object {msg.world.collision_objects}")
+            # We can update the positions in our dictionary if collision objects match
+            existing_objects = [obj for obj in msg.world.collision_objects if obj.id in list(self.object_in_the_scene_storage.keys())]
+            for obj in existing_objects:
+                self.object_in_the_scene_storage[obj.id].pose = obj.pose
+                self.object_in_the_scene_storage[obj.id].header.frame_id = obj.header.frame_id
+                # self.get_logger().warn(f"New position of {obj.id} is {obj.pose}")
+                # self.get_logger().warn(f"New position of {attached_obj.object.id} is {attached_obj.object.pose}")
         
+        if len(msg.robot_state.attached_collision_objects)>0:
+            self.get_logger().warn(f"Found attached object {msg.robot_state.attached_collision_objects}")
+            # We can update the positions in our dictionary if collision objects match
+            existing_objects = [attached_obj for attached_obj in msg.robot_state.attached_collision_objects if attached_obj.object.id in list(self.attached_object_store.keys())]
+            for attached_obj in existing_objects:
+                self.attached_object_store[attached_obj.object.id].object.pose = attached_obj.object.pose
+                self.attached_object_store[attached_obj.object.id].object.header.frame_id = attached_obj.object.header.frame_id
+                # self.get_logger().warn(f"New position of {attached_obj.object.id} is {attached_obj.object.pose}")
+
+
+
     # make_mesh copied from planning_scene_interface.py of moveit_commander
     # original authors: Ioan Sucan, Felix Messmer, same License as above
     def make_mesh(self, uri: str, scale = (1, 1, 1)):
@@ -300,7 +323,7 @@ class SceneManager(Node):
             detach_to_link = self.scene_base_frame
         
         # get the collision (including its mesh) from the attached object
-        collision_object_to_add = deepcopy(attached_collision_object.object)
+        collision_object_to_add = detached_collision_object.object
         collision_object_to_add.header.frame_id = detach_to_link # TODO(gwalck) unsure about that but is in the tuto
         collision_object_to_add.operation = CollisionObject.ADD
 
@@ -321,7 +344,7 @@ class SceneManager(Node):
         ret = self.apply_planning_scene(planning_scene)
         if ret:
             # store the object back to the scene
-            self.attached_object_store[collision_object_to_add.id] = collision_object_to_add
+            self.object_in_the_scene_storage[collision_object_to_add.id] = collision_object_to_add
         return ret
     
     def attach_object_cb(self,
