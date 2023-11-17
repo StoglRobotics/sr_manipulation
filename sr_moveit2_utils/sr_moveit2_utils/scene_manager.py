@@ -148,23 +148,14 @@ class SceneManager(Node):
     
     def planning_scene_cb(self, msg):
         if len(msg.world.collision_objects)>0:
-            self.get_logger().warn(f"Found world object {msg.world.collision_objects}")
             # We can update the positions in our dictionary if collision objects match
-            existing_objects = [obj for obj in msg.world.collision_objects if obj.id in list(self.object_in_the_scene_storage.keys())]
-            for obj in existing_objects:
-                self.object_in_the_scene_storage[obj.id].pose = obj.pose
-                self.object_in_the_scene_storage[obj.id].header.frame_id = obj.header.frame_id
-                # self.get_logger().warn(f"New position of {obj.id} is {obj.pose}")
-                # self.get_logger().warn(f"New position of {attached_obj.object.id} is {attached_obj.object.pose}")
+            for obj in msg.world.collision_objects:
+                self.object_in_the_scene_storage[obj.id] = obj
         
         if len(msg.robot_state.attached_collision_objects)>0:
-            self.get_logger().warn(f"Found attached object {msg.robot_state.attached_collision_objects}")
             # We can update the positions in our dictionary if collision objects match
-            existing_objects = [attached_obj for attached_obj in msg.robot_state.attached_collision_objects if attached_obj.object.id in list(self.attached_object_store.keys())]
-            for attached_obj in existing_objects:
-                self.attached_object_store[attached_obj.object.id].object.pose = attached_obj.object.pose
-                self.attached_object_store[attached_obj.object.id].object.header.frame_id = attached_obj.object.header.frame_id
-                # self.get_logger().warn(f"New position of {attached_obj.object.id} is {attached_obj.object.pose}")
+            for attached_obj in msg.robot_state.attached_collision_objects:
+                self.attached_object_store[attached_obj.object.id] = attached_obj
 
 
 
@@ -306,9 +297,9 @@ class SceneManager(Node):
             self.attached_object_store[object_id] = attached_collision_object_to_detach
             return False
         # Load in the object once more
-        self.object_in_the_scene_storage[object_id] = attached_collision_object_to_detach.object
+        # self.object_in_the_scene_storage[object_id] = attached_collision_object_to_detach.object
         # self.object_in_the_scene_storage[object_id].pose = attached_collision_object_to_detach.object.pose
-        self.object_in_the_scene_storage[object_id].operation = CollisionObject.ADD
+        # self.object_in_the_scene_storage[object_id].operation = CollisionObject.ADD
         # self.get_logger().info(f"storage id {object_id} is put in: {attached_collision_object_to_detach.object}")
         self.get_logger().info(f"Object {attached_collision_object_to_detach} is successfully detached.")
         return True
@@ -344,7 +335,8 @@ class SceneManager(Node):
         ret = self.apply_planning_scene(planning_scene)
         if ret:
             # store the object back to the scene
-            self.object_in_the_scene_storage[collision_object_to_add.id] = collision_object_to_add
+            # self.object_in_the_scene_storage[collision_object_to_add.id] = collision_object_to_add
+            pass
         return ret
     
     def attach_object_cb(self,
@@ -399,7 +391,7 @@ class SceneManager(Node):
         ret = self.apply_planning_scene(planning_scene)
         if ret:
             # add the attached object to the store
-            self.attached_object_store[object_id] = attached_collision_object
+            # self.attached_object_store[object_id] = attached_collision_object
             self.get_logger().debug(f"Object {object_id} is successfully attached to the {link_name} link.")
         else:
             self.get_logger().warn(f"Attaching object {object_id} to the link {link_name} has failed!")
