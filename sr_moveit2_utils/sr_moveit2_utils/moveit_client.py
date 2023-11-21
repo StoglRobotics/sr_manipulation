@@ -43,7 +43,7 @@ from sr_manipulation_interfaces.action import PlanMoveTo, Manip
 from sr_manipulation_interfaces.msg import ManipType, PlanExecState, ServiceResult
 from sr_manipulation_interfaces.srv import AttachObject, DetachObject
 
-from geometry_msgs.msg import PoseStamped, Vector3, Vector3Stamped, Pose
+from geometry_msgs.msg import PoseStamped, Vector3Stamped, Pose
 from moveit_msgs.msg import Grasp
 from sr_moveit2_utils.move_client import MoveClient
 import moveit_msgs.msg
@@ -277,7 +277,6 @@ class MoveItClient(Node):
             self.active_goal = goal
             self.get_logger().debug('Manip goal accepted.')
             return GoalResponse.ACCEPT
-        request.manipulation_sequence[0]
 
     def manip_cancel_cb(self, request):
         #TODO stop current execution cleanly ?
@@ -481,24 +480,6 @@ class MoveItClient(Node):
             self.get_logger().debug(f'{action_name} failed.')
             goal_handle.abort()
             return False
-                
-
-        self.get_logger().debug('PlanMoveTo execution done.')
-        if not goal_handle.is_cancel_requested:
-            if ret:
-                result.state.plan_state = PlanExecState.PLAN_SUCCESS
-                result.state.exec_state = PlanExecState.EXEC_SUCCESS
-                result.success = True
-                self.get_logger().debug('PlanMoveTo succeeded.')
-                goal_handle.succeed()
-            else:
-                result.state.plan_state = PlanExecState.PLAN_ERROR
-                result.state.exec_state = PlanExecState.EXEC_ERROR
-                result.success = False
-                self.get_logger().debug('PlanMoveTo failed.')
-                goal_handle.abort()
-        self.active_goal = None          
-        return result
 
     def send_move_request(self, pose:Pose, cartesian_trajectory:bool=True, planner_profile:str="", velocity_scaling_factor=None):
         # use default velocity scaling if not defined
@@ -511,7 +492,6 @@ class MoveItClient(Node):
         req.link_name = attach_link
         req.touch_links = allowed_touch_links
         response = self.attach_object_cli.call(req)
-        # response = wait_for_response(future, self)
         if response.result.state != ServiceResult.SUCCESS:
             self.get_logger().error(f"Attach object {id} has failed.")
             return False
@@ -522,7 +502,6 @@ class MoveItClient(Node):
         req = DetachObject.Request()
         req.id = id
         response = self.detach_object_cli.call(req)
-        # response = wait_for_response(future, self)
         if response.result.state != ServiceResult.SUCCESS:
             self.get_logger().error(f"Detach object {id} has failed.")
             return False

@@ -1,8 +1,7 @@
 import rclpy
 from rclpy.node import Node
-from geometry_msgs.msg import PoseStamped, Vector3, Pose
+from geometry_msgs.msg import Pose
 from sr_manipulation_interfaces.srv import MoveToPose, MoveToPoseSeq
-from visualization_msgs.msg import MarkerArray
 from std_srvs.srv import Trigger
 
 

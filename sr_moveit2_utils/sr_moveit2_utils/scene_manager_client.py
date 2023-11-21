@@ -37,7 +37,7 @@ import rclpy
 from rclpy.node import Node
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
-from sr_manipulation_interfaces.srv import AddObjects, RemoveObjects, AttachObject, DetachObject
+from sr_manipulation_interfaces.srv import AttachObject, DetachObject
 from sr_manipulation_interfaces.msg import ServiceResult
 
 

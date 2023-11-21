@@ -296,17 +296,11 @@ class SceneManager(Node):
             # re-add the object to the store
             self.attached_object_store[object_id] = attached_collision_object_to_detach
             return False
-        # Load in the object once more
-        # self.object_in_the_scene_storage[object_id] = attached_collision_object_to_detach.object
-        # self.object_in_the_scene_storage[object_id].pose = attached_collision_object_to_detach.object.pose
-        # self.object_in_the_scene_storage[object_id].operation = CollisionObject.ADD
-        # self.get_logger().info(f"storage id {object_id} is put in: {attached_collision_object_to_detach.object}")
         self.get_logger().info(f"Object {attached_collision_object_to_detach} is successfully detached.")
         return True
 
     def detach_collision_object(self, attached_collision_object: AttachedCollisionObject, detach_to_link: str):
 
-        #object_pose_in_attach_link_name = self.tcp_transforms.to_from_tcp_pose_conversion(object.pose, object.header.frame_id, link_name, False)
         detached_collision_object = attached_collision_object
         
         # Add object again to the scene
@@ -317,9 +311,6 @@ class SceneManager(Node):
         collision_object_to_add = detached_collision_object.object
         collision_object_to_add.header.frame_id = detach_to_link # TODO(gwalck) unsure about that but is in the tuto
         collision_object_to_add.operation = CollisionObject.ADD
-
-        #object_pose_in_detach_to_link_name = self.tcp_transforms.to_from_tcp_pose_conversion(collision_object_to_add.pose, collision_object_to_add.header.frame_id, detach_to_link, False)
-        #collision_object_to_add.mesh_poses = [object_pose_in_detach_to_link_name]
 
         detached_collision_object.object.operation = CollisionObject.REMOVE
         #detached_collision_object.object.mesh_poses = [object_pose_in_attach_link_name]
@@ -333,10 +324,6 @@ class SceneManager(Node):
         planning_scene.robot_state.attached_collision_objects.append(detached_collision_object)
         planning_scene.robot_state.is_diff = True
         ret = self.apply_planning_scene(planning_scene)
-        if ret:
-            # store the object back to the scene
-            # self.object_in_the_scene_storage[collision_object_to_add.id] = collision_object_to_add
-            pass
         return ret
     
     def attach_object_cb(self,
