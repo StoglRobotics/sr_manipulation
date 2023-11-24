@@ -151,11 +151,13 @@ class SceneManager(Node):
             # We can update the positions in our dictionary if collision objects match
             for obj in msg.world.collision_objects:
                 self.object_in_the_scene_storage[obj.id] = obj
+                self.get_logger().info(f"Found object {obj.id} with position {obj.pose.position} in scene with frame {obj.header.frame_id}")
         
         if len(msg.robot_state.attached_collision_objects)>0:
             # We can update the positions in our dictionary if collision objects match
             for attached_obj in msg.robot_state.attached_collision_objects:
                 self.attached_object_store[attached_obj.object.id] = attached_obj
+                self.get_logger().info(f"Found ATTACHED object {attached_obj.object.id} with position {attached_obj.object.pose.position} in scene")
 
 
 
@@ -235,14 +237,15 @@ class SceneManager(Node):
                          request: GetObjectPose.Request,
                          response: GetObjectPose.Response) -> GetObjectPose.Response:
         # check if the object exists at all
-        self.get_logger().debug('Scene Manager get object pose') 
+        self.get_logger().debug('Scene Manager get object pose')
+        # self.get_logger().warn(f'Looking for {request.id} in\n{self.object_in_the_scene_storage.keys()}') 
         if not request.id in self.object_in_the_scene_storage:
             response.result.state = ServiceResult.NOTFOUND
         else:
             pose = self.get_object_stamped_pose(request.id)
             if pose is not None:
                 response.result.state = ServiceResult.SUCCESS
-                response.result.pose = pose
+                response.pose = pose
             else:
                 response.result.state = ServiceResult.FAILED
         return response
@@ -251,9 +254,8 @@ class SceneManager(Node):
         if not object_id in self.object_in_the_scene_storage.keys():
             self.get_logger().error(f"Object '{object_id}' is not known to the scene manager. Did you add it?")
             return None
-
         object = self.object_in_the_scene_storage[object_id]
-
+        # self.get_logger().warn(f'Scene Manager get object pose {object}') 
         pose = PoseStamped()
         pose.header = deepcopy(object.header)
         pose.pose = deepcopy(object.pose)
@@ -296,7 +298,7 @@ class SceneManager(Node):
             # re-add the object to the store
             self.attached_object_store[object_id] = attached_collision_object_to_detach
             return False
-        self.get_logger().info(f"Object {attached_collision_object_to_detach} is successfully detached.")
+        self.get_logger().info(f"Object {object_id} is successfully detached.")
         return True
 
     def detach_collision_object(self, attached_collision_object: AttachedCollisionObject, detach_to_link: str):
@@ -356,7 +358,6 @@ class SceneManager(Node):
         collision_object_to_remove.header.frame_id = self.scene_base_frame # TODO(gwalck) unsure about that but is in the tuto
         collision_object_to_remove.operation = CollisionObject.REMOVE
         
-        self.get_logger().info(f"Attach_object is {object_to_attach}")
         #TODO(gwalck) cleanup the duplicate objects coming form the fusion of 2 functions
         #object_pose_in_attach_link_name = self.tcp_transforms.to_from_tcp_pose_conversion(object.pose, object.header.frame_id, link_name, False)
         #self.get_logger().debug(f"Calculated target pose of {object_to_attach.id} in {link_name} is {object_pose_in_attach_link_name}")

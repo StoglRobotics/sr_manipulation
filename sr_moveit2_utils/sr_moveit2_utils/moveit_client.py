@@ -135,6 +135,8 @@ class MoveItClient(Node):
         self.tool_link = self.get_parameter("tool_link").value
         self.declare_parameter("allowed_touch_links", ["tcp_link", "gripper_base"])
         self.allowed_touch_links = self.get_parameter("allowed_touch_links").value
+        self.declare_parameter("fixed_frame", "world")
+        self.fixed_frame = self.get_parameter("fixed_frame").value
 
         self.tcp_transforms = TCPTransforms(self)
         self.visualization_publisher = VisualizatonPublisher(self)
@@ -213,11 +215,11 @@ class MoveItClient(Node):
 
         else:
             for i, target in enumerate(request.targets):
-                if (target.pose.header.frame_id != self.chain_base_link):
+                if (target.pose.header.frame_id != self.fixed_frame):
                     pose = self.compute_manip_pose(target.pose)
                 else:
                     pose = target.pose.pose
-
+                self.visualization_publisher.publish_pose_as_transform(pose, self.fixed_frame, "base_position", is_static=True)
                 self.plan_move_to_feedback.state.plan_message = f"planning for target {i}/{len(request.targets)}"
                 self.plan_move_to_feedback.state.exec_message = f"executing for target {i}/{len(request.targets)}"
                 goal_handle.publish_feedback(self.plan_move_to_feedback)
@@ -300,7 +302,7 @@ class MoveItClient(Node):
         self.get_logger().debug(f'Manip computed pose source frame ({pose_source_frame.header.frame_id}).')
         return self.tcp_transforms.to_from_tcp_pose_conversion(pose_source_frame.pose,
                                                                pose_source_frame.header.frame_id,
-                                                               self.chain_base_link, apply_tool_offset)
+                                                               self.fixed_frame, apply_tool_offset)
 
     def manip_execute_cb(self, goal_handle: ServerGoalHandle):
         self.get_logger().info('executing')
@@ -341,7 +343,7 @@ class MoveItClient(Node):
                                                                           request.pick.pre_grasp_approach.desired_distance)
                     if reach_pose_robot_base_frame is None:
                         break
-                    self.visualization_publisher.publish_pose_as_transform(reach_pose_robot_base_frame, self.chain_base_link, "pre_grasp_pose_base_link", is_static=True)
+                    self.visualization_publisher.publish_pose_as_transform(reach_pose_robot_base_frame, self.fixed_frame, "pre_grasp_pose_base_link", is_static=True)
                 if manip == ManipType.MANIP_REACH_PREPLACE:
                     # compute pre-place pose
                     reach_pose_robot_base_frame = self.compute_manip_pose(request.place.place_pose, True,
@@ -349,11 +351,14 @@ class MoveItClient(Node):
                                                                           request.place.pre_place_approach.desired_distance)
                     if reach_pose_robot_base_frame is None:
                         break
-                    self.visualization_publisher.publish_pose_as_transform(reach_pose_robot_base_frame, self.chain_base_link, "pre_place_pose_base_link", is_static=True)
+                    self.visualization_publisher.publish_pose_as_transform(reach_pose_robot_base_frame, self.fixed_frame, "pre_place_pose_base_link", is_static=True)
             
                 # perform the action
                 # do the actual planning and execution
-
+                reach_pose_robot_base_frame.orientation.x = -reach_pose_robot_base_frame.orientation.x
+                reach_pose_robot_base_frame.orientation.y = -reach_pose_robot_base_frame.orientation.y
+                reach_pose_robot_base_frame.orientation.z = -reach_pose_robot_base_frame.orientation.z
+                reach_pose_robot_base_frame.orientation.w = -reach_pose_robot_base_frame.orientation.w
                 if manip == ManipType.MANIP_REACH_PREGRASP:
                     ret = self.move_client.send_move_request(reach_pose_robot_base_frame, cartesian_trajectory=False,
                                                  planner_profile=request.planner_profile if request.planner_profile else "ompl", plan_only=self.plan_first)
