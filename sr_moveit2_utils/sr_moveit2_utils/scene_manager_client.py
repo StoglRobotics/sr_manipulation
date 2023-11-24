@@ -36,7 +36,8 @@ from copy import deepcopy
 import rclpy
 from rclpy.node import Node
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
-from sr_manipulation_interfaces.srv import AddObjects, RemoveObjects, AttachObject, DetachObject
+from rclpy.executors import MultiThreadedExecutor
+from sr_manipulation_interfaces.srv import AttachObject, DetachObject
 from sr_manipulation_interfaces.msg import ServiceResult
 
 
@@ -64,13 +65,13 @@ class SceneManagerClient(Node):
         # Only a single action on the scene is allowed at a time, so use a MutuallyExclusiveCallbackGroup
         self.server_callback_group = MutuallyExclusiveCallbackGroup()
         # create service clients to Scene Manager for attach and detach
-        self.attach_object_cli = self.create_client(AttachObject, "/scene_manager/attach_object")
+        self.attach_object_cli = self.create_client(AttachObject, "/attach_object")
         while not self.attach_object_cli.wait_for_service(timeout_sec=5.0):
-            self.get_logger().info('/scene_manager/attach_object service not available, waiting again...')
+            self.get_logger().info('/attach_object service not available, waiting again...')
 
-        self.detach_object_cli = self.create_client(DetachObject, "/scene_manager/detach_object")
+        self.detach_object_cli = self.create_client(DetachObject, "/detach_object")
         while not self.detach_object_cli.wait_for_service(timeout_sec=5.0):
-            self.get_logger().info('/scene_manager/detach_object service not available, waiting again...')
+            self.get_logger().info('/detach_object service not available, waiting again...')
         self.get_logger().info('Scene Manager Client initialized')
         
 
@@ -97,3 +98,18 @@ class SceneManagerClient(Node):
             return False
         self.get_logger().debug(f"Successfully detached object {id}.")
         return True
+
+def main(args=None):
+
+    rclpy.init(args=args)
+
+    executor = MultiThreadedExecutor()
+    
+    sc = SceneManagerClient()
+
+    try:
+        rclpy.spin(sc, executor)
+    except KeyboardInterrupt:
+        pass
+
+    rclpy.shutdown()

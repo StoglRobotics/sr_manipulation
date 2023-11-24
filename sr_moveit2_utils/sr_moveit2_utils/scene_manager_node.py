@@ -42,7 +42,7 @@ def main(args=None):
 
     executor = MultiThreadedExecutor()
 
-    scene_manager = SceneManager("maurob_scene_manager", "")
+    scene_manager = SceneManager("scene_manager", "")
 
     try:
         rclpy.spin(scene_manager, executor)
