@@ -177,7 +177,7 @@ class MoveItClient(Node):
     def declare_all_parameters(self):
         self.declare_parameter('planning_group', rclpy.Parameter.Type.STRING)
         self.declare_parameter('trajectory_execution_timeout', rclpy.Parameter.Type.DOUBLE)
-        self.declare_parameter('default_planning_time', rclpy.Parameter.Type.DOUBLE)
+        self.declare_parameter('default_allowed_planning_time', rclpy.Parameter.Type.DOUBLE)
         self.declare_parameter('default_profile_name', rclpy.Parameter.Type.STRING)
         self.declare_parameter('planner_profiles.planner_ids', rclpy.Parameter.Type.STRING_ARRAY)
         self.declare_parameter('planner_profiles.num_planning_attempts', rclpy.Parameter.Type.INTEGER_ARRAY)
@@ -312,7 +312,7 @@ class MoveItClient(Node):
         goal.request.goal_constraints.append(goal_constraint)
 
         goal.request.group_name = self.get_parameter("planning_group").value
-        goal.request.planned_id = self.get_parameter("default_profile_name").value
+        goal.request.planner_id = self.get_parameter("default_profile_name").value
 
         goal.planning_options = PlanningOptions()
         goal.planning_options.plan_only = True
