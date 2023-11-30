@@ -39,14 +39,6 @@ def generate_launch_description():
     )
     declared_arguments.append(
         DeclareLaunchArgument(
-            "configuration_package",
-            default_value="template_mt_cell_configuration",
-            description="Description package of the cell. Usually the argument is not set, \
-        it enables use of a custom description.",
-        )
-    )
-    declared_arguments.append(
-        DeclareLaunchArgument(
             "prefix",
             default_value="",
             description="Prefix of the joint names, useful for \
@@ -132,13 +124,6 @@ def generate_launch_description():
 
     kinematics_yaml = load_yaml(config_package, "config/kinematics.yaml")
 
-    move_group_config = {
-        "planning_pipelines": ["ompl"],
-        # "capabilities": [""],
-    }
-
-    joint_limits_yaml = load_yaml(config_package, "config/joint_limits.yaml")
-
     # Ompl
     ompl_planning_pipeline_config = {
         "ompl": {
@@ -152,77 +137,25 @@ def generate_launch_description():
 
     ompl_planning_pipeline_config["ompl"].update(ompl_planning_yaml)
 
-    robot_description_planning_config = {"robot_description_planning": joint_limits_yaml}
-
-    robot_description_planning_config["robot_description_planning"].update(joint_limits_yaml)
-
-    # Setup trajectory execution
-    moveit_simple_controllers_yaml = load_yaml(config_package, "config/ros2_controllers.yaml")
-    moveit_controllers = {
-        "moveit_simple_controller_manager": moveit_simple_controllers_yaml,
-        "moveit_controller_manager": "moveit_simple_controller_manager/MoveItSimpleControllerManager",
-    }
-
-    trajectory_execution = {
-        "moveit_manage_controllers": False,
-        "trajectory_execution.allowed_execution_duration_scaling": 100.0,
-        "trajectory_execution.allowed_goal_duration_margin": 0.5,
-        "trajectory_execution.allowed_start_tolerance": 0.01,
-    }
-
-    planning_scene_monitor_parameters = {
-        "publish_planning_scene": True,
-        "publish_geometry_updates": True,
-        "publish_state_updates": True,
-        "publish_transforms_updates": True,
-    }
-
-    # MoveIt2 node
-    moveit_node = Node(
-        package="moveit_ros_move_group",
-        executable="move_group",
-        output="screen",
+    # Rviz
+    rviz_node = Node(
+        package="rviz2",
+        executable="rviz2",
+        name="rviz2",
+        output="log",
+        arguments=["-d", rviz_config_file],
         parameters=[
             robot_description,
             robot_description_semantic,
-            kinematics_yaml,
-            move_group_config,
             ompl_planning_pipeline_config,
-            robot_description_planning_config,
-            trajectory_execution,
-            moveit_controllers,
-            planning_scene_monitor_parameters,
+            kinematics_yaml,
         ],
     )
-    # # Rviz
-    # rviz_node = Node(
-    #     package="rviz2",
-    #     executable="rviz2",
-    #     name="rviz2",
-    #     output="log",
-    #     arguments=["-d", rviz_config_file],
-    #     parameters=[
-    #         robot_description,
-    #         robot_description_semantic,
-    #         ompl_planning_pipeline_config,
-    #         kinematics_yaml,
-    #     ],
-    # )
-    
-
-    # delay_rviz_after_moveit_node = RegisterEventHandler(
-    # event_handler=OnProcessExit(
-    #     target_action=moveit_node,
-    #     on_exit=[rviz_node],
-    #     )
-    # )
-
     
     return LaunchDescription(
         declared_arguments
         + [
-            moveit_node,
-            # delay_rviz_after_moveit_node,
+            rviz_node
 
         ]
     )
