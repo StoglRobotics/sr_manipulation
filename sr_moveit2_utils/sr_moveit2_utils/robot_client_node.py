@@ -36,12 +36,14 @@ from copy import deepcopy
 import rclpy
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
-from rclpy.action import ActionServer, GoalResponse, CancelResponse
+from rclpy.action import ActionServer, GoalResponse, CancelResponse, ActionClient
 from rclpy.action.server import ServerGoalHandle, GoalStatus
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup, ReentrantCallbackGroup
 from sr_manipulation_interfaces.action import PlanMoveTo, Manip
 from sr_manipulation_interfaces.msg import ManipType, PlanExecState, ServiceResult
 from sr_manipulation_interfaces.srv import AttachObject, DetachObject
+
+from control_msgs.action import GripperCommand
 
 from geometry_msgs.msg import PoseStamped, Vector3Stamped, Pose
 from moveit_msgs.msg import Grasp
@@ -76,12 +78,12 @@ def wait_for_response(future, client):
                 return response
 
 
-class MoveItClient(Node):
+class RobotClient(Node):
     def __init__(self):
         """
         Create a new client for managing manipulation requests.
         """
-        super().__init__('moveit_client')
+        super().__init__('robot_client_node')
 
         # defaults
         self.active_goal = None
@@ -141,9 +143,12 @@ class MoveItClient(Node):
                                                 #handle_accepted_callback=self.plan_move_to_accepted_cb, # when this is used, execution does not occur
                                                 execute_callback=self.manip_execute_cb,
                                                 callback_group=self.action_callback_group)
-        
-        # Everything related to planning
+        # Gripper ActionClient
         self.action_client_callback_group = MutuallyExclusiveCallbackGroup()
+
+        self.gripper_cli = ActionClient(
+            self, GripperCommand, "/gripper_controller/gripper_cmd", callback_group = self.action_client_callback_group)
+        # Everything related to planning
         self.move_group_cli = ActionClient(self, MoveGroup, '/move_action', callback_group = self.action_client_callback_group)
         self.execute_trajectory_cli = ActionClient(self, ExecuteTrajectory, '/execute_trajectory', callback_group = self.action_client_callback_group)
         self.robot_joint_state = JointState()
@@ -199,9 +204,9 @@ class MoveItClient(Node):
     def initialize_constraints(self):
         orientation_weight = self.get_parameter("constraints.orientation.weight").value
         constraints = Constraints()
-        if orientation_weight>0.0:
+        if orientation_weight>1e-3:
             orientation_constraint = OrientationConstraint()
-            orientation_constraint.header.frame_id = self.fixed_frame
+            orientation_constraint.header.frame_id = self.chain_tip_link
             orientation_constraint.link_name = self.chain_tip_link
             orientation = self.get_parameter("constraints.orientation.orientation").value
             orientation_constraint.orientation.x = orientation[0]
@@ -217,9 +222,10 @@ class MoveItClient(Node):
             constraints.orientation_constraints.append(orientation_constraint)
         
         position_weight = self.get_parameter("constraints.box.weight").value
-        if position_weight>0.0:
+        if position_weight>1e-3:
+            position_frame = self.get_parameter("constraints.box.frame_id").value
             position_constraint = PositionConstraint()
-            position_constraint.header.frame_id = self.fixed_frame
+            position_constraint.header.frame_id = position_frame
             position_constraint.link_name = self.chain_tip_link
 
             position_constraint.target_point_offset.x = 0.0
@@ -245,7 +251,6 @@ class MoveItClient(Node):
             box_pose.orientation.z = box_orientation[2]
             box_pose.orientation.w = box_orientation[3]
             position_constraint.constraint_region.primitive_poses.append(box_pose)
-            position_constraint.weight = 1.0
             position_constraint.weight = position_weight
             constraints.position_constraints.append(position_constraint)
         return constraints
@@ -323,23 +328,31 @@ class MoveItClient(Node):
         # use default velocity scaling if not defined
         if not velocity_scaling_factor:
             velocity_scaling_factor = self.default_velocity_scaling_factor
-
-        self.req_move = MoveToPose.Request()
-        self.req_move.pose = pose
-        self.req_move.cart = cartesian_trajectory
-        self.req_move.planner_profile = planner_profile
-        self.req_move.velocity_scaling_factor = velocity_scaling_factor
-        self.req_move.allowed_planning_time = allowed_planning_time
-        self.req_move.only_plan = plan_only
-        
+            
         if plan_only is True:
-            self.saved_plan = self.plan(pose, velocity_scaling_factor = velocity_scaling_factor).planned_trajectory
+            plan_result = self.plan(pose, velocity_scaling_factor = velocity_scaling_factor)
+            if plan_result.error_code.val == 1:
+                self.saved_plan = plan_result.planned_trajectory
+            else:
+                self.get_logger().error(f"Planning failed with error code {plan_result.error_code}")
+                return False
         else:
-            if self.saved_plan == None:
-                self.saved_plan = self.plan(pose, velocity_scaling_factor = velocity_scaling_factor).planned_trajectory
-            self.execute(self.saved_plan)
+            if self.saved_plan is None:
+                plan_result = self.plan(pose, velocity_scaling_factor = velocity_scaling_factor)
+                if plan_result.error_code.val == 1:
+                    self.saved_plan = plan_result.planned_trajectory
+                else:
+                    self.get_logger().error(f"Planning failed with error code {plan_result.error_code}")
+                    return False
+            
+            execution_result = self.execute(self.saved_plan)
             self.saved_plan = None
-        
+            if execution_result.error_code.val == 1:
+                return True
+            else:
+                self.get_logger().error(f"Execution failed with error code {plan_result.error_code}")
+                return False
+            
         return True
     
     def send_move_seq_request(self, poses:list[Pose], carts:list[bool]=[False], velocity_scaling_factors:list[float]=[0.1],
@@ -596,10 +609,6 @@ class MoveItClient(Node):
             
                 # perform the action
                 # do the actual planning and execution
-                reach_pose_robot_base_frame.orientation.x = -reach_pose_robot_base_frame.orientation.x
-                reach_pose_robot_base_frame.orientation.y = -reach_pose_robot_base_frame.orientation.y
-                reach_pose_robot_base_frame.orientation.z = -reach_pose_robot_base_frame.orientation.z
-                reach_pose_robot_base_frame.orientation.w = -reach_pose_robot_base_frame.orientation.w
                 if manip == ManipType.MANIP_REACH_PREGRASP:
                     ret = self.send_move_request(reach_pose_robot_base_frame, cartesian_trajectory=False,
                                                  planner_profile=request.planner_profile if request.planner_profile else "ompl", plan_only=self.plan_first)
@@ -626,13 +635,13 @@ class MoveItClient(Node):
                     move_pose_robot_base_frame = self.compute_manip_pose(request.pick.grasp_pose)
                     if move_pose_robot_base_frame is None:
                         break
-                    self.visualization_publisher.publish_pose_as_transform(move_pose_robot_base_frame, self.chain_base_link, "grasp_pose_base_link", is_static=True)
+                    self.visualization_publisher.publish_pose_as_transform(move_pose_robot_base_frame, self.fixed_frame, "grasp_pose_base_link", is_static=True)
                 if manip == ManipType.MANIP_MOVE_PLACE:
                     # compute place pose
                     move_pose_robot_base_frame = self.compute_manip_pose(request.place.place_pose)
                     if move_pose_robot_base_frame is None:
                         break
-                    self.visualization_publisher.publish_pose_as_transform(move_pose_robot_base_frame, self.chain_base_link, "place_pose_base_link", is_static=True)
+                    self.visualization_publisher.publish_pose_as_transform(move_pose_robot_base_frame, self.fixed_frame, "place_pose_base_link", is_static=True)
                 # with offset
                 if manip == ManipType.MANIP_MOVE_POSTGRASP:
                     # compute post-pick pose
@@ -641,7 +650,7 @@ class MoveItClient(Node):
                                                                          request.pick.post_grasp_retreat.desired_distance)
                     if move_pose_robot_base_frame is None:
                         break
-                    self.visualization_publisher.publish_pose_as_transform(move_pose_robot_base_frame, self.chain_base_link, "post_grasp_pose_base_link", is_static=True)
+                    self.visualization_publisher.publish_pose_as_transform(move_pose_robot_base_frame, self.fixed_frame, "post_grasp_pose_base_link", is_static=True)
                 if manip == ManipType.MANIP_MOVE_POSTPLACE:
                     # compute post-place pose
                     move_pose_robot_base_frame = self.compute_manip_pose(request.place.place_pose, True,
@@ -649,26 +658,26 @@ class MoveItClient(Node):
                                                                          request.place.post_place_retreat.desired_distance)
                     if move_pose_robot_base_frame is None:
                         break
-                    self.visualization_publisher.publish_pose_as_transform(move_pose_robot_base_frame, self.chain_base_link, "post_place_pose_base_link", is_static=True)
+                    self.visualization_publisher.publish_pose_as_transform(move_pose_robot_base_frame, self.fixed_frame, "post_place_pose_base_link", is_static=True)
                 if manip == ManipType.MANIP_MOVE_GRASP_ADJUST:
                     move_pose_robot_base_frame = self.compute_manip_pose(request.pick.grasp_pose, True,
                                                                           request.brick_grasp_clearance_compensation.direction,
                                                                           request.brick_grasp_clearance_compensation.desired_distance)
                     if move_pose_robot_base_frame is None:
                         break
-                    self.visualization_publisher.publish_pose_as_transform(move_pose_robot_base_frame, self.chain_base_link, "pre_grip_pose_compensation_link", is_static=True)
+                    self.visualization_publisher.publish_pose_as_transform(move_pose_robot_base_frame, self.fixed_frame, "pre_grip_pose_compensation_link", is_static=True)
                 if manip == ManipType.MANIP_MOVE_PLACE_ADJUST:
                     move_pose_robot_base_frame = self.compute_manip_pose(request.place.place_pose, True,
                                                                           request.brick_grasp_clearance_compensation.direction,
                                                                           request.brick_grasp_clearance_compensation.desired_distance)
                     if move_pose_robot_base_frame is None:
                         break
-                    self.visualization_publisher.publish_pose_as_transform(move_pose_robot_base_frame, self.chain_base_link, "pre_grip_pose_compensation_link", is_static=True)
+                    self.visualization_publisher.publish_pose_as_transform(move_pose_robot_base_frame, self.fixed_frame, "pre_grip_pose_compensation_link", is_static=True)
                 # perform the action
                 # do the actual planning and execution
                 ret = self.send_move_request(move_pose_robot_base_frame, cartesian_trajectory=True,
-                                                         velocity_scaling_factor=0.1,
-                                                         planner_profile=request.planner_profile if request.planner_profile else "pilz_lin")
+                                                         velocity_scaling_factor=self.default_velocity_scaling_factor,
+                                                         planner_profile=request.planner_profile if request.planner_profile else "pilz_lin", plan_only=self.plan_first)
 
                 if not self.did_manip_plan_succeed(ret, "Move", goal_handle):
                     result.state.exec_state = PlanExecState.EXEC_ERROR
@@ -678,7 +687,12 @@ class MoveItClient(Node):
                     continue
             # Attach/Detach actions
             if manip in [ManipType.MANIP_GRASP, ManipType.MANIP_RELEASE, ManipType.MANIP_GRIPPER_OPEN, ManipType.MANIP_GRIPPER_CLOSE]:
-                if manip == ManipType.MANIP_GRASP or manip == ManipType.MANIP_GRIPPER_CLOSE:   
+                if manip == ManipType.MANIP_GRASP or manip == ManipType.MANIP_GRIPPER_CLOSE:  
+                    # First, we handle gripper actions
+                    door_msg = GripperCommand.Goal()
+                    door_msg.command.position = 0.022
+                    self.gripper_cli.wait_for_server()
+                    future = self.gripper_cli.send_goal(door_msg)
                     # additionally handle attach
                     if manip == ManipType.MANIP_GRASP:
                         # if success attach
@@ -693,6 +707,12 @@ class MoveItClient(Node):
                         else:
                             continue
                 if manip == ManipType.MANIP_RELEASE or manip == ManipType.MANIP_GRIPPER_OPEN:
+                    # First, we handle gripper actions
+                    door_msg = GripperCommand.Goal()
+                    door_msg.command.position = 0.0
+                    self.gripper_cli.wait_for_server()
+                    future = self.gripper_cli.send_goal(door_msg)
+                    # Additionally handle detach
                     if manip == ManipType.MANIP_RELEASE:
                         #if success detach
                         if not request.disable_scene_handling:
@@ -755,7 +775,7 @@ def main(args=None):
 
     executor = MultiThreadedExecutor()
     
-    mc = MoveItClient()
+    mc = RobotClient()
 
     try:
         rclpy.spin(mc, executor)
