@@ -75,7 +75,7 @@ from threading import Event
 import numpy
 from sr_manipulation_interfaces.srv import AddObjects, RemoveObjects, AttachObject, DetachObject, GetObjectPose
 from sr_manipulation_interfaces.msg import ObjectDescriptor, ServiceResult
-from moveit_msgs.msg import PlanningScene, CollisionObject, AttachedCollisionObject
+from moveit_msgs.msg import PlanningScene, CollisionObject, AttachedCollisionObject, PlanningSceneWorld
 from moveit_msgs.srv import ApplyPlanningScene
 from visualization_msgs.msg import MarkerArray, Marker, MeshFile
 from geometry_msgs.msg import PoseStamped, Pose, Point
@@ -130,7 +130,8 @@ class SceneManager(Node):
         self.scene_base_frame = scene_base_frame
 
         #self.tcp_transforms = TCPTransforms(parent_node)
-
+        # We create a new subscriber to the /monitored_planning_scene topic
+        self.planning_scene_subscriber = self.create_subscription(PlanningScene, "/monitored_planning_scene", self.planning_scene_cb, 10)
         # Only a single action on the scene is allowed at a time, so use a MutuallyExclusiveCallbackGroup
         self.server_callback_group = MutuallyExclusiveCallbackGroup()
         # create services
@@ -154,7 +155,22 @@ class SceneManager(Node):
             self.get_logger().info('apply_planning_scene service not available, waiting again...')
         
         self.get_logger().info('Scene Manager initialized')
+    
+    def planning_scene_cb(self, msg):
+        if len(msg.world.collision_objects)>0:
+            # We can update the positions in our dictionary if collision objects match
+            for obj in msg.world.collision_objects:
+                self.object_in_the_scene_storage[obj.id] = obj
+                self.get_logger().info(f"Found object {obj.id} with position {obj.pose.position} in scene with frame {obj.header.frame_id}")
         
+        if len(msg.robot_state.attached_collision_objects)>0:
+            # We can update the positions in our dictionary if collision objects match
+            for attached_obj in msg.robot_state.attached_collision_objects:
+                self.attached_object_store[attached_obj.object.id] = attached_obj
+                self.get_logger().info(f"Found ATTACHED object {attached_obj.object.id} with position {attached_obj.object.pose.position} in scene")
+
+
+
     # make_mesh copied from planning_scene_interface.py of moveit_commander
     # original authors: Ioan Sucan, Felix Messmer, same License as above
     def make_mesh(self, uri: str, scale = (1, 1, 1)):
@@ -228,14 +244,15 @@ class SceneManager(Node):
                          request: GetObjectPose.Request,
                          response: GetObjectPose.Response) -> GetObjectPose.Response:
         # check if the object exists at all
-        self.get_logger().debug('Scene Manager get object pose') 
+        self.get_logger().debug('Scene Manager get object pose')
+        # self.get_logger().warn(f'Looking for {request.id} in\n{self.object_in_the_scene_storage.keys()}') 
         if not request.id in self.object_in_the_scene_storage:
             response.result.state = ServiceResult.NOTFOUND
         else:
             pose = self.get_object_stamped_pose(request.id)
             if pose is not None:
                 response.result.state = ServiceResult.SUCCESS
-                response.result.pose = pose
+                response.pose = pose
             else:
                 response.result.state = ServiceResult.FAILED
         return response
@@ -244,9 +261,8 @@ class SceneManager(Node):
         if not object_id in self.object_in_the_scene_storage.keys():
             self.get_logger().error(f"Object '{object_id}' is not known to the scene manager. Did you add it?")
             return None
-
         object = self.object_in_the_scene_storage[object_id]
-
+        # self.get_logger().warn(f'Scene Manager get object pose {object}') 
         pose = PoseStamped()
         pose.header = deepcopy(object.header)
         pose.pose = deepcopy(object.pose)
@@ -289,12 +305,11 @@ class SceneManager(Node):
             # re-add the object to the store
             self.attached_object_store[object_id] = attached_collision_object_to_detach
             return False
-        self.get_logger().debug(f"Object {object_id} is successfully detached.")
+        self.get_logger().info(f"Object {object_id} is successfully detached.")
         return True
 
     def detach_collision_object(self, attached_collision_object: AttachedCollisionObject, detach_to_link: str):
 
-        #object_pose_in_attach_link_name = self.tcp_transforms.to_from_tcp_pose_conversion(object.pose, object.header.frame_id, link_name, False)
         detached_collision_object = attached_collision_object
         
         # Add object again to the scene
@@ -302,12 +317,9 @@ class SceneManager(Node):
             detach_to_link = self.scene_base_frame
         
         # get the collision (including its mesh) from the attached object
-        collision_object_to_add = deepcopy(attached_collision_object.object)
+        collision_object_to_add = detached_collision_object.object
         collision_object_to_add.header.frame_id = detach_to_link # TODO(gwalck) unsure about that but is in the tuto
         collision_object_to_add.operation = CollisionObject.ADD
-
-        #object_pose_in_detach_to_link_name = self.tcp_transforms.to_from_tcp_pose_conversion(collision_object_to_add.pose, collision_object_to_add.header.frame_id, detach_to_link, False)
-        #collision_object_to_add.mesh_poses = [object_pose_in_detach_to_link_name]
 
         detached_collision_object.object.operation = CollisionObject.REMOVE
         #detached_collision_object.object.mesh_poses = [object_pose_in_attach_link_name]
@@ -321,9 +333,6 @@ class SceneManager(Node):
         planning_scene.robot_state.attached_collision_objects.append(detached_collision_object)
         planning_scene.robot_state.is_diff = True
         ret = self.apply_planning_scene(planning_scene)
-        if ret:
-            # store the object back to the scene
-            self.attached_object_store[collision_object_to_add.id] = collision_object_to_add
         return ret
     
     def attach_object_cb(self,
@@ -335,10 +344,10 @@ class SceneManager(Node):
         else:
             ret = self.attach_object(request.id, request.link_name, request.touch_links)
             if ret:
-                self.get_logger().debug('Scene Manager Object attached')
+                self.get_logger().info('Scene Manager Object attached')
                 response.result.state = ServiceResult.SUCCESS
             else:
-                self.get_logger().warn('Scene Manager Object attach failed')
+                self.get_logger().info('Scene Manager Object attach failed')
                 response.result.state = ServiceResult.FAILED
         return response
     
@@ -348,9 +357,8 @@ class SceneManager(Node):
 
         # object must be removed from the world
         object_to_attach = self.object_in_the_scene_storage.pop(object_id, None)
-        
-        self.get_logger().debug(f"Initial pose of {object_to_attach.id} in {object_to_attach.header.frame_id} is {object_to_attach.pose}")
-        self.get_logger().debug(f"Trying to attach it to {link_name}")
+        self.get_logger().info(f"Initial pose of {object_to_attach.id} in {object_to_attach.header.frame_id} is {object_to_attach.pose}")
+        self.get_logger().info(f"Trying to attach it to {link_name}")
 
         collision_object_to_remove = CollisionObject()
         collision_object_to_remove.id = object_to_attach.id
@@ -378,7 +386,7 @@ class SceneManager(Node):
         ret = self.apply_planning_scene(planning_scene)
         if ret:
             # add the attached object to the store
-            self.attached_object_store[object_id] = attached_collision_object
+            # self.attached_object_store[object_id] = attached_collision_object
             self.get_logger().debug(f"Object {object_id} is successfully attached to the {link_name} link.")
         else:
             self.get_logger().warn(f"Attaching object {object_id} to the link {link_name} has failed!")
@@ -400,7 +408,7 @@ class SceneManager(Node):
                         request: AddObjects.Request,
                         response: AddObjects.Response) -> AddObjects.Response:
 
-        self.get_logger().debug('Adding the objects into the world at the given location.')
+        self.get_logger().info('Adding the objects into the world at the given location.')
         added_object_ids = self.add_objects(request.objects, request.as_marker)
         if added_object_ids:
 
@@ -414,7 +422,7 @@ class SceneManager(Node):
         else:
             response.result.state = ServiceResult.FAILED
             response.result.message = f'No objects added'
-
+        self.get_logger().info('Sending response')
         return response
 
     def add_objects(self, objects: ObjectDescriptor, as_markers=False) -> list[int]:

@@ -1,0 +1,5 @@
+string object_id
+string link_name
+string[] touch_links
+---
+bool success
