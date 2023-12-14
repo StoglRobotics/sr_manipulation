@@ -13,7 +13,7 @@
   <depend>moveit_msgs</depend>
   <depend>sensor_msgs</depend>
   <depend>shape_msgs</depend>
-  <depend>std_srv</depend>
+  <depend>std_srvs</depend>
   <depend>std_msgs</depend>
   <exec_depend>python3-pyassimp</exec_depend>
 
