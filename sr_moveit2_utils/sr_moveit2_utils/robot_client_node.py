@@ -132,7 +132,7 @@ class RobotClient(Node):
         )
 
         self.scene_client = SceneManagerClient()
-
+        self.get_logger().info('Init GripperClient ...')
         # Gripper handler
         self.gripper_client = GripperClient(
             tf_prefix=self.tf_prefix,
@@ -144,7 +144,7 @@ class RobotClient(Node):
         # self.gripper_client = GripperClient(node=self, sim=self.sim, move_client=self.move_client, svc_cbg=self.service_callback_group, sub_cbg=self.subpub_callback_group)
 
         self.init_gripper()
-
+        self.get_logger().info('Init action servers ...')
         # action servers
         # plan_move_to and manipulate action servers are not allowed to run simultaneously. so we use a Mutually exclusive callback group
         self.action_callback_group = MutuallyExclusiveCallbackGroup()
@@ -185,22 +185,6 @@ class RobotClient(Node):
         if not response.success:
             self.get_logger().fatal("CR Brake is not set correctly")
             exit(-1)
-        # display change gauge pose
-        self.visualization_publisher.publish_pose_stamped_as_transform(
-            self.gripper_client.change_gauge_start, "CG_start", True
-        )
-        self.visualization_publisher.publish_pose_stamped_as_transform(
-            self.gripper_client.change_gauge_ref, "CG_Hole", True
-        )
-        self.visualization_publisher.publish_pose_stamped_as_transform(
-            self.gripper_client.change_gauge_above, "CG_Above", True
-        )
-        self.visualization_publisher.publish_pose_stamped_as_transform(
-            self.gripper_client.change_gauge_small_to_wide, "CG_S2W", True
-        )
-        self.visualization_publisher.publish_pose_stamped_as_transform(
-            self.gripper_client.change_gauge_wide_to_small, "CG_W2S", True
-        )
 
     def plan_move_to_goal_cb(self, goal: PlanMoveTo.Goal):
         self.get_logger().debug("Received new PlanMoveTo goal...")
