@@ -375,7 +375,6 @@ class RobotClient(Node):
             self.active_goal = goal
             self.get_logger().debug("Manip goal accepted.")
             return GoalResponse.ACCEPT
-        request.manipulation_sequence[0]
 
     def manip_cancel_cb(self, request):
         # TODO stop current execution cleanly ?
@@ -803,23 +802,6 @@ class RobotClient(Node):
             self.get_logger().debug(f"{action_name} failed.")
             goal_handle.abort()
             return False
-
-        self.get_logger().debug("PlanMoveTo execution done.")
-        if not goal_handle.is_cancel_requested:
-            if ret:
-                result.state.plan_state = PlanExecState.PLAN_SUCCESS
-                result.state.exec_state = PlanExecState.EXEC_SUCCESS
-                result.success = True
-                self.get_logger().debug("PlanMoveTo succeeded.")
-                goal_handle.succeed()
-            else:
-                result.state.plan_state = PlanExecState.PLAN_ERROR
-                result.state.exec_state = PlanExecState.EXEC_ERROR
-                result.success = False
-                self.get_logger().debug("PlanMoveTo failed.")
-                goal_handle.abort()
-        self.active_goal = None
-        return result
 
     def send_move_request(
         self,
