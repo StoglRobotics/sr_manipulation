@@ -7,4 +7,3 @@ bool as_marker
 ServiceResult result
 # helper to know which object were added or not (useful in case of partial insertion)
 string[] added_object_ids
-
