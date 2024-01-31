@@ -132,7 +132,7 @@ class RobotClient(Node):
         )
 
         self.scene_client = SceneManagerClient()
-        self.get_logger().info('Init GripperClient ...')
+        self.get_logger().info("Init GripperClient ...")
         # Gripper handler
         self.gripper_client = GripperClient(
             tf_prefix=self.tf_prefix,
@@ -144,7 +144,7 @@ class RobotClient(Node):
         # self.gripper_client = GripperClient(node=self, sim=self.sim, move_client=self.move_client, svc_cbg=self.service_callback_group, sub_cbg=self.subpub_callback_group)
 
         self.init_gripper()
-        self.get_logger().info('Init action servers ...')
+        self.get_logger().info("Init action servers ...")
         # action servers
         # plan_move_to and manipulate action servers are not allowed to run simultaneously. so we use a Mutually exclusive callback group
         self.action_callback_group = MutuallyExclusiveCallbackGroup()
