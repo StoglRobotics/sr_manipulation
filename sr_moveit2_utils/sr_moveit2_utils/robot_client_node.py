@@ -689,10 +689,10 @@ class RobotClient(Node):
             if manip in [ManipType.MANIP_GRASP, ManipType.MANIP_RELEASE, ManipType.MANIP_GRIPPER_OPEN, ManipType.MANIP_GRIPPER_CLOSE]:
                 if manip == ManipType.MANIP_GRASP or manip == ManipType.MANIP_GRIPPER_CLOSE:  
                     # First, we handle gripper actions
-                    door_msg = GripperCommand.Goal()
-                    door_msg.command.position = 0.022
-                    self.gripper_cli.wait_for_server()
-                    future = self.gripper_cli.send_goal(door_msg)
+                    # door_msg = GripperCommand.Goal()
+                    # door_msg.command.position = 0.022
+                    # self.gripper_cli.wait_for_server()
+                    # future = self.gripper_cli.send_goal(door_msg)
                     # additionally handle attach
                     if manip == ManipType.MANIP_GRASP:
                         # if success attach
@@ -708,10 +708,10 @@ class RobotClient(Node):
                             continue
                 if manip == ManipType.MANIP_RELEASE or manip == ManipType.MANIP_GRIPPER_OPEN:
                     # First, we handle gripper actions
-                    door_msg = GripperCommand.Goal()
-                    door_msg.command.position = 0.0
-                    self.gripper_cli.wait_for_server()
-                    future = self.gripper_cli.send_goal(door_msg)
+                    # door_msg = GripperCommand.Goal()
+                    # door_msg.command.position = 0.0
+                    # self.gripper_cli.wait_for_server()
+                    # future = self.gripper_cli.send_goal(door_msg)
                     # Additionally handle detach
                     if manip == ManipType.MANIP_RELEASE:
                         #if success detach
