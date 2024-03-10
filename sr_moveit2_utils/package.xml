@@ -10,12 +10,7 @@
 
   <depend>rclpy</depend>
   <depend>sr_manipulation_interfaces</depend>
-  <depend>maurob_cell_description</depend>
   <depend>moveit_msgs</depend>
-  <depend>sensor_msgs</depend>
-  <depend>shape_msgs</depend>
-  <depend>std_srvs</depend>
-  <depend>std_msgs</depend>
   <exec_depend>python3-pyassimp</exec_depend>
 
   <test_depend>ament_lint_auto</test_depend>
