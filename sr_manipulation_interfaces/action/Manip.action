@@ -16,6 +16,7 @@ bool disable_scene_handling
 # only plan, not execution
 bool only_plan
 # enforce the planner profile (empty means use default)
+# Currently the options are: 'ompl', 'ompl_with_constraints', 'pilz_lin'
 string planner_profile
 ---
 # final state effectively reached
