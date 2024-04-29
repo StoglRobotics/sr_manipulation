@@ -26,7 +26,7 @@
 # CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-# based on moveit_clients.py, scene_client 
+# based on moveit_clients.py, scene_client
 #
 # Author Dr Denis Stogl, Guillaume Walck
 
@@ -49,7 +49,8 @@ def wait_for_response(future, client):
                 response = future.result()
             except Exception as e:
                 client.get_logger().info(
-                    'Service call to move_to_pose or move_to_pose_seq failed %r' % (e,))
+                    "Service call to move_to_pose or move_to_pose_seq failed %r" % (e,)
+                )
                 return None
             else:
                 return response
@@ -60,22 +61,25 @@ class SceneManagerClient(Node):
         """
         Create a new client for managing scene with MoveIt2.
         """
-        super().__init__('scene_manager_client')
+        super().__init__("scene_manager_client")
 
         # Only a single action on the scene is allowed at a time, so use a MutuallyExclusiveCallbackGroup
         self.server_callback_group = MutuallyExclusiveCallbackGroup()
         # create service clients to Scene Manager for attach and detach
         self.attach_object_cli = self.create_client(AttachObject, "/attach_object")
         while not self.attach_object_cli.wait_for_service(timeout_sec=5.0):
-            self.get_logger().info('/attach_object service not available, waiting again...')
+            self.get_logger().info(
+                "/attach_object service not available, waiting again..."
+            )
 
         self.detach_object_cli = self.create_client(DetachObject, "/detach_object")
         while not self.detach_object_cli.wait_for_service(timeout_sec=5.0):
-            self.get_logger().info('/detach_object service not available, waiting again...')
-        self.get_logger().info('Scene Manager Client initialized')
-        
+            self.get_logger().info(
+                "/detach_object service not available, waiting again..."
+            )
+        self.get_logger().info("Scene Manager Client initialized")
 
-    def attach(self, id:str, attach_link:str, allowed_touch_links:list[str]):
+    def attach(self, id: str, attach_link: str, allowed_touch_links: list[str]):
         req = AttachObject.Request()
         req.id = id
         req.link_name = attach_link
@@ -87,8 +91,8 @@ class SceneManagerClient(Node):
             return False
         self.get_logger().debug(f"Successfully attached object {id} to {attach_link}.")
         return True
-    
-    def detach(self, id:str):
+
+    def detach(self, id: str):
         req = DetachObject.Request()
         req.id = id
         future = self.detach_object_cli.call_async(req)
@@ -99,12 +103,13 @@ class SceneManagerClient(Node):
         self.get_logger().debug(f"Successfully detached object {id}.")
         return True
 
+
 def main(args=None):
 
     rclpy.init(args=args)
 
     executor = MultiThreadedExecutor()
-    
+
     sc = SceneManagerClient()
 
     try:
