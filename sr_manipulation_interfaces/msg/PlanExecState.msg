@@ -26,4 +26,3 @@ int8 EXEC_ERROR_MOVING=-1
 int8 EXEC_ERROR_SCENE_UPDATE=-2
 # string to get more details on the error
 string exec_message
-

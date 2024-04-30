@@ -38,7 +38,6 @@ from sr_moveit2_utils.scene_manager import SceneManager
 
 
 def main(args=None):
-
     rclpy.init(args=args)
 
     executor = MultiThreadedExecutor()

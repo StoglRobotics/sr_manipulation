@@ -1,4 +1,3 @@
-from glob import glob
 from setuptools import setup, find_packages
 
 package_name = "sr_moveit2_utils"

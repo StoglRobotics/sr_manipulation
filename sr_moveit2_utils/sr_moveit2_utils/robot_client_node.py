@@ -72,7 +72,7 @@ def wait_for_response(future, client):
                 response = future.result()
             except Exception as e:
                 client.get_logger().info(
-                    "Service call to move_to_pose or move_to_pose_seq failed %r" % (e,)
+                    f"Service call to move_to_pose or move_to_pose_seq failed {e!r}"
                 )
                 return None
             else:
@@ -81,9 +81,7 @@ def wait_for_response(future, client):
 
 class RobotClient(Node):
     def __init__(self):
-        """
-        Create a new client for managing manipulation requests.
-        """
+        """Create a new client for managing manipulation requests."""
         super().__init__("robot_client_node")
 
         # defaults
@@ -217,34 +215,22 @@ class RobotClient(Node):
 
     def declare_all_parameters(self):
         self.declare_parameter("planning_group", rclpy.Parameter.Type.STRING)
-        self.declare_parameter(
-            "trajectory_execution_timeout", rclpy.Parameter.Type.DOUBLE
-        )
-        self.declare_parameter(
-            "default_allowed_planning_time", rclpy.Parameter.Type.DOUBLE
-        )
+        self.declare_parameter("trajectory_execution_timeout", rclpy.Parameter.Type.DOUBLE)
+        self.declare_parameter("default_allowed_planning_time", rclpy.Parameter.Type.DOUBLE)
         self.declare_parameter("default_profile_name", rclpy.Parameter.Type.STRING)
-        self.declare_parameter(
-            "planner_profiles.planner_ids", rclpy.Parameter.Type.STRING_ARRAY
-        )
+        self.declare_parameter("planner_profiles.planner_ids", rclpy.Parameter.Type.STRING_ARRAY)
         self.declare_parameter(
             "planner_profiles.num_planning_attempts", rclpy.Parameter.Type.INTEGER_ARRAY
         )
         self.declare_parameter(
             "planner_profiles.is_cartonly_planners", rclpy.Parameter.Type.BOOL_ARRAY
         )
-        self.declare_parameter(
-            "planner_profiles.use_constraints", rclpy.Parameter.Type.BOOL_ARRAY
-        )
+        self.declare_parameter("planner_profiles.use_constraints", rclpy.Parameter.Type.BOOL_ARRAY)
         self.declare_parameter(
             "planner_profiles.allowed_planning_times", rclpy.Parameter.Type.DOUBLE_ARRAY
         )
-        self.declare_parameter(
-            "constraints.orientation.frame_id", rclpy.Parameter.Type.STRING
-        )
-        self.declare_parameter(
-            "constraints.orientation.link_name", rclpy.Parameter.Type.STRING
-        )
+        self.declare_parameter("constraints.orientation.frame_id", rclpy.Parameter.Type.STRING)
+        self.declare_parameter("constraints.orientation.link_name", rclpy.Parameter.Type.STRING)
         self.declare_parameter(
             "constraints.orientation.orientation", rclpy.Parameter.Type.DOUBLE_ARRAY
         )
@@ -252,20 +238,12 @@ class RobotClient(Node):
             "constraints.orientation.absolute_tolerance",
             rclpy.Parameter.Type.DOUBLE_ARRAY,
         )
-        self.declare_parameter(
-            "constraints.orientation.weight", rclpy.Parameter.Type.DOUBLE
-        )
+        self.declare_parameter("constraints.orientation.weight", rclpy.Parameter.Type.DOUBLE)
         self.declare_parameter("constraints.box.frame_id", rclpy.Parameter.Type.STRING)
         self.declare_parameter("constraints.box.link_name", rclpy.Parameter.Type.STRING)
-        self.declare_parameter(
-            "constraints.box.dimensions", rclpy.Parameter.Type.DOUBLE_ARRAY
-        )
-        self.declare_parameter(
-            "constraints.box.position", rclpy.Parameter.Type.DOUBLE_ARRAY
-        )
-        self.declare_parameter(
-            "constraints.box.orientation", rclpy.Parameter.Type.DOUBLE_ARRAY
-        )
+        self.declare_parameter("constraints.box.dimensions", rclpy.Parameter.Type.DOUBLE_ARRAY)
+        self.declare_parameter("constraints.box.position", rclpy.Parameter.Type.DOUBLE_ARRAY)
+        self.declare_parameter("constraints.box.orientation", rclpy.Parameter.Type.DOUBLE_ARRAY)
         self.declare_parameter("constraints.box.weight", rclpy.Parameter.Type.DOUBLE)
 
     def initialize_constraints(self):
@@ -275,16 +253,12 @@ class RobotClient(Node):
             orientation_constraint = OrientationConstraint()
             orientation_constraint.header.frame_id = self.chain_tip_link
             orientation_constraint.link_name = self.chain_tip_link
-            orientation = self.get_parameter(
-                "constraints.orientation.orientation"
-            ).value
+            orientation = self.get_parameter("constraints.orientation.orientation").value
             orientation_constraint.orientation.x = orientation[0]
             orientation_constraint.orientation.y = orientation[1]
             orientation_constraint.orientation.z = orientation[2]
             orientation_constraint.orientation.w = orientation[3]
-            tolerance = self.get_parameter(
-                "constraints.orientation.absolute_tolerance"
-            ).value
+            tolerance = self.get_parameter("constraints.orientation.absolute_tolerance").value
             orientation_constraint.absolute_x_axis_tolerance = tolerance[0]
             orientation_constraint.absolute_y_axis_tolerance = tolerance[1]
             orientation_constraint.absolute_z_axis_tolerance = tolerance[2]
@@ -376,12 +350,8 @@ class RobotClient(Node):
         goal_constraint.position_constraints.append(goal_pos)
         goal_constraint.orientation_constraints.append(goal_ori)
 
-        default_allowed_planning_time = self.get_parameter(
-            "default_allowed_planning_time"
-        ).value
-        self.get_logger().info(
-            f"default_allowed_planning_time: {default_allowed_planning_time}"
-        )
+        default_allowed_planning_time = self.get_parameter("default_allowed_planning_time").value
+        self.get_logger().info(f"default_allowed_planning_time: {default_allowed_planning_time}")
         allowed_planning_time = 0.5
         if default_allowed_planning_time > 0.0:
             allowed_planning_time = default_allowed_planning_time
@@ -438,9 +408,7 @@ class RobotClient(Node):
             f"plan only = {plan_only}, has saved plan = {self.saved_plan is not None}"
         )
         if plan_only is True or self.saved_plan is None:
-            plan_result = self.plan(
-                pose, velocity_scaling_factor=velocity_scaling_factor
-            )
+            plan_result = self.plan(pose, velocity_scaling_factor=velocity_scaling_factor)
             self.get_logger().info(f"plan_result.error_code: {plan_result.error_code}")
             if plan_result.error_code.val == 1:
                 self.saved_plan = plan_result.planned_trajectory
@@ -455,16 +423,12 @@ class RobotClient(Node):
             return True
 
         execution_result = self.execute(self.saved_plan)
-        self.get_logger().info(
-            f"execution_result.error_code: {execution_result.error_code}"
-        )
+        self.get_logger().info(f"execution_result.error_code: {execution_result.error_code}")
         self.saved_plan = None
         if execution_result.error_code.val == 1:
             return True
         else:
-            self.get_logger().error(
-                f"Execution failed with error code {plan_result.error_code}"
-            )
+            self.get_logger().error(f"Execution failed with error code {plan_result.error_code}")
             return False
 
     def send_move_seq_request(
@@ -477,7 +441,7 @@ class RobotClient(Node):
         allowed_planning_time: float = 0.0,
     ):
         if self.move_seq_cli is None:
-            self.get_logger().error(f"Move to Sequence is not available.")
+            self.get_logger().error("Move to Sequence is not available.")
             resp = MoveToPoseSeq.Response()
             resp.success = False
             return resp
@@ -525,9 +489,7 @@ class RobotClient(Node):
             # validate the goal
             # TODO(gwalck) check the target is a known frame ? otherwise converted it ?
             if len(goal.targets) == 0:
-                self.get_logger().error(
-                    "PlanMoveTo goal rejected because there is no target."
-                )
+                self.get_logger().error("PlanMoveTo goal rejected because there is no target.")
                 return GoalResponse.REJECT
             if (
                 len(goal.targets) > 1
@@ -554,10 +516,10 @@ class RobotClient(Node):
     def plan_move_to_cancel_cb(self, request):
         # TODO handle stop trajectory if we where moving
         if self.send_stop_request():
-            self.get_logger().info(f"Current goal and motion cancelled.")
+            self.get_logger().info("Current goal and motion cancelled.")
             return CancelResponse.ACCEPT
         else:
-            self.get_logger().error(f"Cannot cancel the current motion.")
+            self.get_logger().error("Cannot cancel the current motion.")
             return CancelResponse.REJECT
 
     def plan_move_to_execute_cb(self, goal_handle: ServerGoalHandle):
@@ -573,9 +535,7 @@ class RobotClient(Node):
         goal_handle.publish_feedback(self.plan_move_to_feedback)
         # do the actual planning and execution
         # only use move seq if blending radious are provided, otherwise use standard move_seq
-        if (
-            len(request.targets) > 1 and request.targets[0].blending_radius > 0.0
-        ):  # use MoveToSeq
+        if len(request.targets) > 1 and request.targets[0].blending_radius > 0.0:  # use MoveToSeq
             self.get_logger().info("PlanMoveTo using MoveToSeq.")
             poses = []
             carts = []
@@ -583,9 +543,7 @@ class RobotClient(Node):
             velocity_scaling_factors = []
             blending_radii = []
             for i, target in enumerate(request.targets):
-                self.get_logger().warn(
-                    f"  Target {i} pose x {target.pose.pose.position.x}."
-                )
+                self.get_logger().warn(f"  Target {i} pose x {target.pose.pose.position.x}.")
                 if target.pose.header.frame_id != self.chain_base_link:
                     pose = self.compute_manip_pose(target.pose)
                 else:
@@ -670,9 +628,7 @@ class RobotClient(Node):
 
     def validate_manip_goal(self, goal: Manip.Goal) -> bool:
         if not goal.manipulation_sequence:
-            self.get_logger().warn(
-                "Manip goal rejected. no manipulation sequence provided."
-            )
+            self.get_logger().warn("Manip goal rejected. no manipulation sequence provided.")
             return False
         for manip in goal.manipulation_sequence:
             if manip not in self.SUPPORTED_MANIP_ACTIONS:
@@ -686,9 +642,7 @@ class RobotClient(Node):
 
     def manip_goal_cb(self, goal: Manip.Goal):
         if self.active_goal is not None:
-            self.get_logger().warn(
-                "Manip goal rejected because there is already an active goal."
-            )
+            self.get_logger().warn("Manip goal rejected because there is already an active goal.")
             return GoalResponse.REJECT
         else:
             # validate the goal
@@ -724,9 +678,7 @@ class RobotClient(Node):
                 pose_source_frame.header.frame_id,
             )
             #  add offset
-            dir = np.array(
-                [offset_transformed.x, offset_transformed.y, offset_transformed.z]
-            )
+            dir = np.array([offset_transformed.x, offset_transformed.y, offset_transformed.z])
             offset = dir * offset_distance
             pose_source_frame.pose.position.x += offset[0]
             pose_source_frame.pose.position.y += offset[1]
@@ -758,9 +710,8 @@ class RobotClient(Node):
         goal_handle.publish_feedback(self.manip_feedback)
 
         # process the sequence
-        while (
-            not goal_handle.is_cancel_requested
-            and self.manip_feedback.current_step < len(request.manipulation_sequence)
+        while not goal_handle.is_cancel_requested and self.manip_feedback.current_step < len(
+            request.manipulation_sequence
         ):
             # get current manip
             self.manip_feedback.current_manip = request.manipulation_sequence[
@@ -824,9 +775,7 @@ class RobotClient(Node):
                         reach_pose_robot_base_frame,
                         cartesian_trajectory=False,
                         planner_profile=(
-                            request.planner_profile
-                            if request.planner_profile
-                            else "ompl"
+                            request.planner_profile if request.planner_profile else "ompl"
                         ),
                         plan_only=self.plan_first,
                     )
@@ -868,9 +817,7 @@ class RobotClient(Node):
                 # no offset
                 if manip == ManipType.MANIP_MOVE_GRASP:
                     # compute pick pose
-                    move_pose_robot_base_frame = self.compute_manip_pose(
-                        request.pick.grasp_pose
-                    )
+                    move_pose_robot_base_frame = self.compute_manip_pose(request.pick.grasp_pose)
                     if move_pose_robot_base_frame is None:
                         break
                     self.visualization_publisher.publish_pose_as_transform(
@@ -881,9 +828,7 @@ class RobotClient(Node):
                     )
                 if manip == ManipType.MANIP_MOVE_PLACE:
                     # compute place pose
-                    move_pose_robot_base_frame = self.compute_manip_pose(
-                        request.place.place_pose
-                    )
+                    move_pose_robot_base_frame = self.compute_manip_pose(request.place.place_pose)
                     if move_pose_robot_base_frame is None:
                         break
                     self.visualization_publisher.publish_pose_as_transform(
@@ -962,9 +907,7 @@ class RobotClient(Node):
                     cartesian_trajectory=True,
                     velocity_scaling_factor=self.default_velocity_scaling_factor,
                     planner_profile=(
-                        request.planner_profile
-                        if request.planner_profile
-                        else "pilz_lin"
+                        request.planner_profile if request.planner_profile else "pilz_lin"
                     ),
                     plan_only=self.plan_first,
                 )
@@ -982,15 +925,13 @@ class RobotClient(Node):
                 ManipType.MANIP_GRIPPER_OPEN,
                 ManipType.MANIP_GRIPPER_CLOSE,
             ]:
-                if (
-                    manip == ManipType.MANIP_GRASP
-                    or manip == ManipType.MANIP_GRIPPER_CLOSE
-                ):
+                if manip == ManipType.MANIP_GRASP or manip == ManipType.MANIP_GRIPPER_CLOSE:
                     # First, we handle gripper actions
                     door_msg = GripperCommand.Goal()
                     door_msg.command.position = 0.022
                     self.gripper_cli.wait_for_server()
-                    future = self.gripper_cli.send_goal(door_msg)
+                    # future = self.gripper_cli.send_goal(door_msg)
+                    self.gripper_cli.send_goal(door_msg)
                     # additionally handle attach
                     if manip == ManipType.MANIP_GRASP:
                         # if success attach
@@ -1010,15 +951,13 @@ class RobotClient(Node):
                             break
                         else:
                             continue
-                if (
-                    manip == ManipType.MANIP_RELEASE
-                    or manip == ManipType.MANIP_GRIPPER_OPEN
-                ):
+                if manip == ManipType.MANIP_RELEASE or manip == ManipType.MANIP_GRIPPER_OPEN:
                     # First, we handle gripper actions
                     door_msg = GripperCommand.Goal()
                     door_msg.command.position = 0.0
                     self.gripper_cli.wait_for_server()
-                    future = self.gripper_cli.send_goal(door_msg)
+                    # future = self.gripper_cli.send_goal(door_msg)
+                    self.gripper_cli.send_goal(door_msg)
                     # Additionally handle detach
                     if manip == ManipType.MANIP_RELEASE:
                         # if success detach
@@ -1041,9 +980,7 @@ class RobotClient(Node):
         self.active_goal = None
         return result
 
-    def did_manip_plan_succeed(
-        self, plan_exec_success: bool, action_name: str, goal_handle
-    ):
+    def did_manip_plan_succeed(self, plan_exec_success: bool, action_name: str, goal_handle):
         if plan_exec_success:
             self.manip_feedback.state.plan_state = PlanExecState.PLAN_SUCCESS
             self.manip_feedback.state.exec_state = PlanExecState.EXEC_SUCCESS
@@ -1082,7 +1019,6 @@ class RobotClient(Node):
 
 
 def main(args=None):
-
     rclpy.init(args=args)
 
     executor = MultiThreadedExecutor()

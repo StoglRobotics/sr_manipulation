@@ -13,7 +13,7 @@ def wait_for_response(future, client):
                 response = future.result()
             except Exception as e:
                 client.get_logger().info(
-                    "Service call to move_to_pose or move_to_pose_seq failed %r" % (e,)
+                    f"Service call to move_to_pose or move_to_pose_seq failed {e!r}"
                 )
                 return None
             else:
@@ -22,7 +22,8 @@ def wait_for_response(future, client):
 
 class MoveClient(Node):
     """
-    Helper class to create services to the MoveItWrapper
+    Helper class to create services to the MoveItWrapper.
+
     This class is not a standalone class and requires a node to be instantiated with correct callback groups
     """
 
@@ -34,17 +35,13 @@ class MoveClient(Node):
             MoveToPose, "/move_to_pose"
         )  # , callback_group=svc_cbg)
         while not self.move_cli.wait_for_service(timeout_sec=5.0):
-            self.get_logger().info(
-                "move_to_pose service not available, waiting again..."
-            )
+            self.get_logger().info("move_to_pose service not available, waiting again...")
 
         self.move_seq_cli = self.create_client(
             MoveToPoseSeq, "/move_to_pose_seq"
         )  # , callback_group=svc_cbg)
         if not self.move_seq_cli.wait_for_service(timeout_sec=3.0):
-            self.get_logger().info(
-                "move_to_pose_seq service not available, waiting again..."
-            )
+            self.get_logger().info("move_to_pose_seq service not available, waiting again...")
             self.move_seq_cli = None
 
         self.stop_trajectory_exec_cli = self.create_client(
@@ -95,7 +92,7 @@ class MoveClient(Node):
         allowed_planning_time: float = 0.0,
     ):
         if self.move_seq_cli is None:
-            self.get_logger().error(f"Move to Sequence is not available.")
+            self.get_logger().error("Move to Sequence is not available.")
             resp = MoveToPoseSeq.Response()
             resp.success = False
             return resp
