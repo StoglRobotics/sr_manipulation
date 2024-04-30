@@ -368,11 +368,11 @@ class RobotClient(Node):
         goal.request.planner_id = "RRTstar"
         # goal.request.pipeline_id = "pilz"
         # goal.request.planner_id = "PTP"
-        goal.request.max_acceleration_scaling_factor = 1.0
+        # goal.request.max_acceleration_scaling_factor = 1.0
         # # set start velocity to zero
-        goal.request.start_state.joint_state.velocity = [0.0] * 6
+        # goal.request.start_state.joint_state.velocity = [0.0] * 6
 
-        goal.request.num_planning_attempts = 3
+        # goal.request.num_planning_attempts = 3
 
         # goal.request.workspace_parameters.header.frame_id = self.fixed_frame
         # goal.request.workspace_parameters.min_corner.x = -1.0

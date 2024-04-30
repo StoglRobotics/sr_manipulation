@@ -87,11 +87,7 @@ from moveit_msgs.msg import (
 from moveit_msgs.srv import ApplyPlanningScene
 from visualization_msgs.msg import MarkerArray, Marker
 from geometry_msgs.msg import PoseStamped, Point
-
-# from shape_msgs.msg import SolidPrimitive
 from shape_msgs.msg import SolidPrimitive, Mesh, MeshTriangle
-
-# from sr_ros2_python_utils.transforms import TCPTransforms
 
 
 # part of make_mesh copied from planning_scene_interface.py of moveit_commander
@@ -101,7 +97,7 @@ try:
     from pyassimp import load as pyassimp_load
     from importlib.metadata import version as libversion
 
-except:
+except ImportError as e:
     pyassimp = False
     print(f"Failed to import pyassimp: {e}")
 
