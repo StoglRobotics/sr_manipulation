@@ -32,6 +32,7 @@
 
 
 from copy import deepcopy
+from typing import Sequence
 
 import rclpy
 from rclpy.executors import MultiThreadedExecutor
@@ -40,27 +41,17 @@ from rclpy.action import ActionServer, GoalResponse, CancelResponse, ActionClien
 from rclpy.action.server import ServerGoalHandle, GoalStatus
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
 from sr_manipulation_interfaces.action import PlanMoveTo, Manip
-from sr_manipulation_interfaces.msg import ManipType, PlanExecState, ServiceResult
-from sr_manipulation_interfaces.srv import AttachObject, DetachObject, MoveToPoseSeq
+from sr_manipulation_interfaces.msg import ManipType, PlanExecState, ServiceResult, MoveWaypoint
+from sr_manipulation_interfaces.srv import AttachObject, DetachObject
 
 from control_msgs.action import GripperCommand
 
 from geometry_msgs.msg import PoseStamped, Vector3Stamped, Pose
+from sr_moveit2_utils.moveit_client import MoveitClient
 from sr_ros2_python_utils.transforms import TCPTransforms
 from sr_ros2_python_utils.visualization_publishers import VisualizatonPublisher
 import numpy as np
-from sensor_msgs.msg import JointState
 from std_srvs.srv import Trigger
-from moveit_msgs.msg import (
-    Constraints,
-    OrientationConstraint,
-    PositionConstraint,
-    RobotTrajectory,
-    MotionPlanRequest,
-    PlanningOptions,
-)
-from moveit_msgs.action import MoveGroup, ExecuteTrajectory
-from shape_msgs.msg import SolidPrimitive
 from std_msgs.msg import String
 
 
@@ -88,21 +79,6 @@ class RobotClient(Node):
         self.active_goal = None
         self.plan_move_to_feedback = PlanMoveTo.Feedback()
         self.manip_feedback = Manip.Feedback()
-        self.SUPPORTED_MANIP_ACTIONS = [
-            ManipType.MANIP_MOVE_GRASP,
-            ManipType.MANIP_MOVE_POSTGRASP,
-            ManipType.MANIP_MOVE_PLACE,
-            ManipType.MANIP_MOVE_PLACE_ADJUST,
-            ManipType.MANIP_MOVE_POSTPLACE,
-            ManipType.MANIP_REACH_PREGRASP,
-            ManipType.MANIP_REACH_PREPLACE,
-            ManipType.MANIP_GRASP,
-            ManipType.MANIP_MOVE_GRASP_ADJUST,
-            ManipType.MANIP_RELEASE,
-            ManipType.MANIP_GRIPPER_ADJUST,
-            ManipType.MANIP_GRIPPER_OPEN,
-            ManipType.MANIP_GRIPPER_CLOSE,
-        ]
         self.MANIP_ACTIONS_TO_STR = {
             ManipType.MANIP_MOVE_GRASP: "MoveTo Grasp Pose",
             ManipType.MANIP_MOVE_POSTGRASP: "MoveTo Post Grasp Pose",
@@ -118,10 +94,12 @@ class RobotClient(Node):
             ManipType.MANIP_GRIPPER_OPEN: "Open Gripper",
             ManipType.MANIP_GRIPPER_CLOSE: "Close Gripper",
         }
+        self.SUPPORTED_MANIP_ACTIONS = list(self.MANIP_ACTIONS_TO_STR.keys())
 
         self.subscriber_callback_group = MutuallyExclusiveCallbackGroup()
         # Services to MoveItWrapper
-        # Moveit Motion or Scene changes should not happen in parallel, so use same Mutually exclusive callback group
+        # Moveit Motion or Scene changes should not happen in parallel,
+        # so use same Mutually exclusive callback group
         self.service_callback_group = MutuallyExclusiveCallbackGroup()
         self.stop_trajectory_srv = self.create_service(
             Trigger,
@@ -158,28 +136,12 @@ class RobotClient(Node):
         )
         # Gripper ActionClient
         self.action_client_callback_group = MutuallyExclusiveCallbackGroup()
-
         self.gripper_cli = ActionClient(
             self,
             GripperCommand,
             "/gripper_controller/gripper_cmd",
             callback_group=self.action_client_callback_group,
         )
-        # Everything related to planning
-        self.move_group_cli = ActionClient(
-            self,
-            MoveGroup,
-            "/move_action",
-            callback_group=self.action_client_callback_group,
-        )
-        self.execute_trajectory_cli = ActionClient(
-            self,
-            ExecuteTrajectory,
-            "/execute_trajectory",
-            callback_group=self.action_client_callback_group,
-        )
-        self.robot_joint_state = JointState()
-        self.default_velocity_scaling_factor = 0.5
         self.saved_plan = None
 
         self.attach_object_cli = self.create_client(
@@ -200,105 +162,27 @@ class RobotClient(Node):
         self.allowed_touch_links = self.get_parameter("allowed_touch_links").value
         self.declare_parameter("fixed_frame", "world")
         self.fixed_frame = self.get_parameter("fixed_frame").value
+        self.declare_parameter("default_velocity_scaling_factor", 1.0)
+        self.default_velocity_scaling_factor = self.get_parameter(
+            "default_velocity_scaling_factor"
+        ).value
+        self.declare_parameter("default_acceleration_scaling_factor", 1.0)
+        self.default_acceleration_scaling_factor = self.get_parameter(
+            "default_acceleration_scaling_factor"
+        ).value
+
+        self.moveit_client = MoveitClient(
+            node=self,
+            pose_reference_frame=self.fixed_frame,
+            end_effector_link=self.chain_tip_link,
+        )
 
         self.tcp_transforms = TCPTransforms(self)
         self.visualization_publisher = VisualizatonPublisher(self)
 
         self.plan_first = True
 
-        self.joint_state_subscriber = self.create_subscription(
-            JointState, "/joint_states", self.joint_state_cb, 10
-        )
-        self.declare_all_parameters()
-        self.planning_constraints = self.initialize_constraints()
         self.get_logger().info("Robot Client ready")
-
-    def declare_all_parameters(self):
-        self.declare_parameter("planning_group", rclpy.Parameter.Type.STRING)
-        self.declare_parameter("trajectory_execution_timeout", rclpy.Parameter.Type.DOUBLE)
-        self.declare_parameter("default_allowed_planning_time", rclpy.Parameter.Type.DOUBLE)
-        self.declare_parameter("default_profile_name", rclpy.Parameter.Type.STRING)
-        self.declare_parameter("planner_profiles.planner_ids", rclpy.Parameter.Type.STRING_ARRAY)
-        self.declare_parameter(
-            "planner_profiles.num_planning_attempts", rclpy.Parameter.Type.INTEGER_ARRAY
-        )
-        self.declare_parameter(
-            "planner_profiles.is_cartonly_planners", rclpy.Parameter.Type.BOOL_ARRAY
-        )
-        self.declare_parameter("planner_profiles.use_constraints", rclpy.Parameter.Type.BOOL_ARRAY)
-        self.declare_parameter(
-            "planner_profiles.allowed_planning_times", rclpy.Parameter.Type.DOUBLE_ARRAY
-        )
-        self.declare_parameter("constraints.orientation.frame_id", rclpy.Parameter.Type.STRING)
-        self.declare_parameter("constraints.orientation.link_name", rclpy.Parameter.Type.STRING)
-        self.declare_parameter(
-            "constraints.orientation.orientation", rclpy.Parameter.Type.DOUBLE_ARRAY
-        )
-        self.declare_parameter(
-            "constraints.orientation.absolute_tolerance",
-            rclpy.Parameter.Type.DOUBLE_ARRAY,
-        )
-        self.declare_parameter("constraints.orientation.weight", rclpy.Parameter.Type.DOUBLE)
-        self.declare_parameter("constraints.box.frame_id", rclpy.Parameter.Type.STRING)
-        self.declare_parameter("constraints.box.link_name", rclpy.Parameter.Type.STRING)
-        self.declare_parameter("constraints.box.dimensions", rclpy.Parameter.Type.DOUBLE_ARRAY)
-        self.declare_parameter("constraints.box.position", rclpy.Parameter.Type.DOUBLE_ARRAY)
-        self.declare_parameter("constraints.box.orientation", rclpy.Parameter.Type.DOUBLE_ARRAY)
-        self.declare_parameter("constraints.box.weight", rclpy.Parameter.Type.DOUBLE)
-
-    def initialize_constraints(self):
-        orientation_weight = self.get_parameter("constraints.orientation.weight").value
-        constraints = Constraints()
-        if orientation_weight > 1e-3:
-            orientation_constraint = OrientationConstraint()
-            orientation_constraint.header.frame_id = self.chain_tip_link
-            orientation_constraint.link_name = self.chain_tip_link
-            orientation = self.get_parameter("constraints.orientation.orientation").value
-            orientation_constraint.orientation.x = orientation[0]
-            orientation_constraint.orientation.y = orientation[1]
-            orientation_constraint.orientation.z = orientation[2]
-            orientation_constraint.orientation.w = orientation[3]
-            tolerance = self.get_parameter("constraints.orientation.absolute_tolerance").value
-            orientation_constraint.absolute_x_axis_tolerance = tolerance[0]
-            orientation_constraint.absolute_y_axis_tolerance = tolerance[1]
-            orientation_constraint.absolute_z_axis_tolerance = tolerance[2]
-
-            orientation_constraint.weight = orientation_weight
-            constraints.orientation_constraints.append(orientation_constraint)
-
-        position_weight = self.get_parameter("constraints.box.weight").value
-        if position_weight > 1e-3:
-            position_frame = self.get_parameter("constraints.box.frame_id").value
-            position_constraint = PositionConstraint()
-            position_constraint.header.frame_id = position_frame
-            position_constraint.link_name = self.chain_tip_link
-
-            position_constraint.target_point_offset.x = 0.0
-            position_constraint.target_point_offset.y = 0.0
-            position_constraint.target_point_offset.z = 0.0
-
-            box_bounding_volume = SolidPrimitive()
-            box_bounding_volume.type = 1
-            box_dimensions = self.get_parameter("constraints.box.dimensions").value
-            box_bounding_volume.dimensions.append(box_dimensions[0])
-            box_bounding_volume.dimensions.append(box_dimensions[1])
-            box_bounding_volume.dimensions.append(box_dimensions[2])
-            position_constraint.constraint_region.primitives.append(box_bounding_volume)
-
-            box_pose = Pose()
-            box_position = self.get_parameter("constraints.box.position").value
-            box_pose.position.x = box_position[0]
-            box_pose.position.y = box_position[1]
-            box_pose.position.z = box_position[2]
-            box_orientation = self.get_parameter("constraints.box.orientation").value
-            box_pose.orientation.x = box_orientation[0]
-            box_pose.orientation.y = box_orientation[1]
-            box_pose.orientation.z = box_orientation[2]
-            box_pose.orientation.w = box_orientation[3]
-            position_constraint.constraint_region.primitive_poses.append(box_pose)
-            position_constraint.weight = position_weight
-            constraints.position_constraints.append(position_constraint)
-        return constraints
 
     def stop_trajectory_cb(self, request: Trigger.Request, response: Trigger.Response):
         msg = String()
@@ -307,114 +191,46 @@ class RobotClient(Node):
         response.success = True
         return response
 
-    def execute(self, plan: RobotTrajectory):
-        self.get_logger().info("Executing planned trajectory")
-        self.execute_trajectory_cli.wait_for_server()
-        goal = ExecuteTrajectory.Goal()
-
-        goal.trajectory = plan
-        return self.execute_trajectory_cli.send_goal(goal).result
-
-    def plan(
-        self,
-        pose: Pose,
-        velocity_scaling_factor: float = 1.0,
-    ):
-        self.get_logger().info("inside plan()")
-        self.move_group_cli.wait_for_server()
-        goal = MoveGroup.Goal()
-
-        goal_pos = PositionConstraint()
-        goal_pos.header.frame_id = self.fixed_frame
-        goal_pos.link_name = self.chain_tip_link
-        goal_pos.target_point_offset.x = 0.0
-        goal_pos.target_point_offset.y = 0.0
-        goal_pos.target_point_offset.z = 0.0
-
-        goal_bounding_volume = SolidPrimitive()
-        goal_bounding_volume.type = 2
-        goal_bounding_volume.dimensions.append(1e-4)
-        goal_pos.constraint_region.primitives.append(goal_bounding_volume)
-        goal_pos.constraint_region.primitive_poses.append(pose)
-        goal_pos.weight = 1.0
-
-        goal_ori = OrientationConstraint()
-        goal_ori.header.frame_id = self.fixed_frame
-        goal_ori.link_name = self.chain_tip_link
-        goal_ori.orientation = pose.orientation
-        goal_ori.absolute_x_axis_tolerance = 1e-4
-        goal_ori.absolute_y_axis_tolerance = 1e-4
-        goal_ori.absolute_z_axis_tolerance = 1e-4
-        goal_ori.weight = 1.0
-        goal_constraint = Constraints()
-        goal_constraint.position_constraints.append(goal_pos)
-        goal_constraint.orientation_constraints.append(goal_ori)
-
-        default_allowed_planning_time = self.get_parameter("default_allowed_planning_time").value
-        self.get_logger().info(f"default_allowed_planning_time: {default_allowed_planning_time}")
-        allowed_planning_time = 0.5
-        if default_allowed_planning_time > 0.0:
-            allowed_planning_time = default_allowed_planning_time
-
-        goal.request = MotionPlanRequest()
-        goal.request.path_constraints = self.planning_constraints
-        goal.request.max_velocity_scaling_factor = velocity_scaling_factor
-        goal.request.allowed_planning_time = allowed_planning_time
-        goal.request.start_state.joint_state = self.robot_joint_state
-        goal.request.goal_constraints.append(goal_constraint)
-        goal.request.group_name = self.get_parameter("planning_group").value
-        # goal.request.planner_id = self.get_parameter("default_profile_name").value
-        goal.request.pipeline_id = "ompl"
-        goal.request.planner_id = "RRTstar"
-        # goal.request.pipeline_id = "pilz"
-        # goal.request.planner_id = "PTP"
-        # goal.request.max_acceleration_scaling_factor = 1.0
-        # # set start velocity to zero
-        # goal.request.start_state.joint_state.velocity = [0.0] * 6
-
-        # goal.request.num_planning_attempts = 3
-
-        # goal.request.workspace_parameters.header.frame_id = self.fixed_frame
-        # goal.request.workspace_parameters.min_corner.x = -1.0
-        # goal.request.workspace_parameters.min_corner.y = -1.0
-        # goal.request.workspace_parameters.min_corner.z = -1.0
-        # goal.request.workspace_parameters.max_corner.x = 1.0
-        # goal.request.workspace_parameters.max_corner.y = 1.0
-        # goal.request.workspace_parameters.max_corner.z = 1.0
-
-        goal.planning_options = PlanningOptions()
-        goal.planning_options.plan_only = True
-
-        return self.move_group_cli.send_goal(goal).result
-
     def send_move_request(
         self,
         pose: Pose,
-        cartesian_trajectory: bool = True,
-        planner_profile: str = "",
+        cartesian_trajectory: bool,
+        planner_profile: str,
+        plan_only: bool,
         velocity_scaling_factor=None,
-        allowed_planning_time: float = 0.0,
-        plan_only: bool = False,
+        acceleration_scaling_factor=None,
+        allowed_planning_time: float = None,
     ):
-        # use default velocity scaling if not defined
         if not velocity_scaling_factor:
-            self.get_logger().info(
-                "velocity_scaling_factor is None, using default value: "
-                f"{self.default_velocity_scaling_factor}"
-            )
             velocity_scaling_factor = self.default_velocity_scaling_factor
+        if not acceleration_scaling_factor:
+            acceleration_scaling_factor = self.default_acceleration_scaling_factor
 
-        self.get_logger().info(
-            f"plan only = {plan_only}, has saved plan = {self.saved_plan is not None}"
+        move_request_args_msg = (
+            f"\npose={pose}, "
+            f"\ncartesian_trajectory={cartesian_trajectory}, "
+            f"\nplanner_profile={planner_profile}, "
+            f"\nvelocity_scaling_factor={velocity_scaling_factor}, "
+            f"\nacceleration_scaling_factor={acceleration_scaling_factor}, "
+            f"\nallowed_planning_time={allowed_planning_time}"
         )
+        self.get_logger().info(f"Sending move request with {move_request_args_msg}")
+
         if plan_only is True or self.saved_plan is None:
-            plan_result = self.plan(pose, velocity_scaling_factor=velocity_scaling_factor)
-            self.get_logger().info(f"plan_result.error_code: {plan_result.error_code}")
-            if plan_result.error_code.val == 1:
-                self.saved_plan = plan_result.planned_trajectory
+            planned_trajectory = self.moveit_client.plan(
+                pose=pose,
+                cartesian_trajectory=cartesian_trajectory,
+                planner_profile=planner_profile,
+                velocity_scaling_factor=velocity_scaling_factor,
+                acceleration_scaling_factor=acceleration_scaling_factor,
+                allowed_planning_time=allowed_planning_time,
+            )
+            if planned_trajectory:
+                self.saved_plan = planned_trajectory
+                self.get_logger().info("Planning succeeded in send_move_request")
             else:
                 self.get_logger().error(
-                    f"Planning failed with error code {plan_result.error_code}"
+                    f"Planning failed in send_move_request with {move_request_args_msg}"
                 )
                 return False
 
@@ -422,49 +238,16 @@ class RobotClient(Node):
         if plan_only:
             return True
 
-        execution_result = self.execute(self.saved_plan)
-        self.get_logger().info(f"execution_result.error_code: {execution_result.error_code}")
+        exec_success = self.moveit_client.execute(self.saved_plan)
         self.saved_plan = None
-        if execution_result.error_code.val == 1:
+        if exec_success:
+            self.get_logger().info("Execution succeeded in send_move_request")
             return True
         else:
-            self.get_logger().error(f"Execution failed with error code {plan_result.error_code}")
+            self.get_logger().error(
+                f"Execution failed in send_move_request with {move_request_args_msg}"
+            )
             return False
-
-    def send_move_seq_request(
-        self,
-        poses: list[Pose],
-        carts: list[bool] = [False],
-        velocity_scaling_factors: list[float] = [0.1],
-        blending_radii: list[float] = [0.05],
-        profiles: list[str] = [""],
-        allowed_planning_time: float = 0.0,
-    ):
-        if self.move_seq_cli is None:
-            self.get_logger().error("Move to Sequence is not available.")
-            resp = MoveToPoseSeq.Response()
-            resp.success = False
-            return resp
-
-        req = MoveToPoseSeq.Request()
-        req.poses = poses
-        req.carts = carts
-        req.planner_profiles = profiles
-        req.velocity_scaling_factors = velocity_scaling_factors
-        req.blending_radii = blending_radii
-        req.allowed_planning_time = allowed_planning_time
-
-        self.get_logger().info(
-            f"Received request to move to pose seq with a list of {len(poses)} poses."
-        )
-        future = self.move_seq_cli.call_async(req)
-        response = wait_for_response(future, self)
-        if not response.success:
-            self.get_logger().error(f"Move to {len(poses)} poses has failed.")
-            return False
-        else:
-            self.get_logger().info(f"Successfully moved to {len(poses)} poses.")
-        return True
 
     def send_stop_request(self):
         self.req_stop = Trigger.Request()
@@ -505,14 +288,6 @@ class RobotClient(Node):
             self.get_logger().info("PlanMoveTo goal accepted.")
             return GoalResponse.ACCEPT
 
-    def joint_state_cb(self, msg: JointState):
-        joint_state_to_copy = JointState()
-        joint_state_to_copy.name = msg.name[:6]
-        joint_state_to_copy.position = msg.position[:6]
-        joint_state_to_copy.velocity = msg.velocity[:6]
-        joint_state_to_copy.effort = msg.effort[:6]
-        self.robot_joint_state = joint_state_to_copy
-
     def plan_move_to_cancel_cb(self, request):
         # TODO handle stop trajectory if we where moving
         if self.send_stop_request():
@@ -525,7 +300,7 @@ class RobotClient(Node):
     def plan_move_to_execute_cb(self, goal_handle: ServerGoalHandle):
         self.get_logger().info("PlanMoveTo executing...")
         # self.active_goal = goal_handle
-        request = self.active_goal  # goal_handle.request
+        request: PlanMoveTo.Goal = self.active_goal  # goal_handle.request
         result = PlanMoveTo.Result()
         result.state.plan_state = PlanExecState.PLAN_UNKNOWN
         result.state.exec_state = PlanExecState.EXEC_UNKNOWN
@@ -534,82 +309,45 @@ class RobotClient(Node):
         self.plan_move_to_feedback.state.exec_state = PlanExecState.EXEC_MOVING
         goal_handle.publish_feedback(self.plan_move_to_feedback)
         # do the actual planning and execution
-        # only use move seq if blending radious are provided, otherwise use standard move_seq
-        if len(request.targets) > 1 and request.targets[0].blending_radius > 0.0:  # use MoveToSeq
-            self.get_logger().info("PlanMoveTo using MoveToSeq.")
-            poses = []
-            carts = []
-            planner_profiles = []
-            velocity_scaling_factors = []
-            blending_radii = []
-            for i, target in enumerate(request.targets):
-                self.get_logger().warn(f"  Target {i} pose x {target.pose.pose.position.x}.")
-                if target.pose.header.frame_id != self.chain_base_link:
-                    pose = self.compute_manip_pose(target.pose)
-                else:
-                    pose = target.pose.pose
-                poses.append(pose)
-                carts.append(target.cart)
-                planner_profiles.append(target.planner_profile)
-                velocity_scaling_factors.append(target.velocity_scaling_factor)
-                blending_radii.append(target.blending_radius)
-                self.visualization_publisher.publish_pose_as_transform(
-                    pose, self.chain_base_link, "mortar_pose_" + str(i), is_static=False
-                )
-
-            ret = self.send_move_seq_request(
-                poses,
-                carts,
-                velocity_scaling_factors,
-                blending_radii,
-                planner_profiles,
-                request.allowed_planning_time,
+        self.get_logger().info("PlanMoveTo using MoveTo.")
+        targets: Sequence[MoveWaypoint] = request.targets
+        for i, target in enumerate(targets):
+            if target.pose.header.frame_id != self.fixed_frame:
+                pose = self.compute_manip_pose(target.pose)
+            else:
+                pose = target.pose.pose
+            self.visualization_publisher.publish_pose_as_transform(
+                pose, self.fixed_frame, "base_position", is_static=True
             )
-            self.plan_move_to_feedback.state.plan_state = PlanExecState.PLAN_UNKNOWN
-            self.plan_move_to_feedback.state.exec_state = PlanExecState.EXEC_UNKNOWN
+            self.plan_move_to_feedback.state.plan_message = (
+                f"planning for target {i}/{len(request.targets)}"
+            )
+            self.plan_move_to_feedback.state.exec_message = (
+                f"executing for target {i}/{len(request.targets)}"
+            )
             goal_handle.publish_feedback(self.plan_move_to_feedback)
 
-        else:
-            self.get_logger().info("PlanMoveTo using MoveTo.")
-            for i, target in enumerate(request.targets):
-                if target.pose.header.frame_id != self.fixed_frame:
-                    pose = self.compute_manip_pose(target.pose)
-                else:
-                    pose = target.pose.pose
-                self.visualization_publisher.publish_pose_as_transform(
-                    pose, self.fixed_frame, "base_position", is_static=True
-                )
+            ret = self.send_move_request(
+                pose,
+                cartesian_trajectory=target.cart,
+                planner_profile=target.planner_profile,
+                velocity_scaling_factor=target.velocity_scaling_factor,
+                allowed_planning_time=request.allowed_planning_time,
+            )
+            if not ret:
                 self.plan_move_to_feedback.state.plan_message = (
-                    f"planning for target {i}/{len(request.targets)}"
+                    f" failed plan for target {i}/{len(request.targets)}"
                 )
                 self.plan_move_to_feedback.state.exec_message = (
-                    f"executing for target {i}/{len(request.targets)}"
+                    f" failed execution for target {i}/{len(request.targets)}"
                 )
-                goal_handle.publish_feedback(self.plan_move_to_feedback)
+                break
 
-                velocity_scaling_factor = None
-                if target.velocity_scaling_factor != 0.0:
-                    velocity_scaling_factor = target.velocity_scaling_factor
-                ret = self.send_move_request(
-                    pose,
-                    cartesian_trajectory=target.cart,
-                    planner_profile=target.planner_profile,
-                    velocity_scaling_factor=velocity_scaling_factor,
-                    allowed_planning_time=request.allowed_planning_time,
-                )
-                if not ret:
-                    self.plan_move_to_feedback.state.plan_message = (
-                        f" failed plan for target {i}/{len(request.targets)}"
-                    )
-                    self.plan_move_to_feedback.state.exec_message = (
-                        f" failed execution for target {i}/{len(request.targets)}"
-                    )
-                    break
+        self.plan_move_to_feedback.state.plan_state = PlanExecState.PLAN_UNKNOWN
+        self.plan_move_to_feedback.state.exec_state = PlanExecState.EXEC_UNKNOWN
 
-            self.plan_move_to_feedback.state.plan_state = PlanExecState.PLAN_UNKNOWN
-            self.plan_move_to_feedback.state.exec_state = PlanExecState.EXEC_UNKNOWN
+        self.get_logger().info("PlanMoveTo execution done.")
 
-            self.get_logger().info("PlanMoveTo execution done.")
         self.active_goal = None
         if not goal_handle.is_cancel_requested:
             if ret:
@@ -666,10 +404,9 @@ class RobotClient(Node):
     ) -> Pose:
         pose_source_frame = deepcopy(source_pose)
         self.get_logger().info(
-            "GETTING FRAMES"
-            + str(offset_dir.header.frame_id)
-            + "\nand\n"
-            + str(pose_source_frame.header.frame_id)
+            "GETTING FRAMES: "
+            f"offset_dir.header.frame_id={offset_dir.header.frame_id}, "
+            f"pose_source_frame.header.frame_id={pose_source_frame.header.frame_id}"
         )
         if use_offset:
             offset_transformed = self.tcp_transforms.to_from_tcp_vec3_conversion(
@@ -719,7 +456,8 @@ class RobotClient(Node):
             ]
             manip = self.manip_feedback.current_manip
             self.get_logger().info(
-                f"Manip Exec loop at step {self.manip_feedback.current_step} action type {self.MANIP_ACTIONS_TO_STR[manip]}"
+                f"Manip Exec loop at step {self.manip_feedback.current_step} "
+                f"action type {self.MANIP_ACTIONS_TO_STR[manip]}"
             )
             # update state
             self.manip_feedback.state.plan_state = PlanExecState.PLAN_RUNNING
@@ -775,7 +513,10 @@ class RobotClient(Node):
                         reach_pose_robot_base_frame,
                         cartesian_trajectory=False,
                         planner_profile=(
-                            request.planner_profile if request.planner_profile else "ompl"
+                            # request.planner_profile if request.planner_profile else "ompl"
+                            request.planner_profile
+                            if request.planner_profile
+                            else "pilz_ptp"
                         ),
                         plan_only=self.plan_first,
                     )
@@ -786,7 +527,8 @@ class RobotClient(Node):
                         planner_profile=(
                             request.planner_profile
                             if request.planner_profile
-                            else "ompl_with_constraints"
+                            # else "ompl_with_constraints"
+                            else "pilz_ptp"
                         ),
                         plan_only=self.plan_first,
                     )
@@ -905,7 +647,6 @@ class RobotClient(Node):
                 ret = self.send_move_request(
                     move_pose_robot_base_frame,
                     cartesian_trajectory=True,
-                    velocity_scaling_factor=self.default_velocity_scaling_factor,
                     planner_profile=(
                         request.planner_profile if request.planner_profile else "pilz_lin"
                     ),
