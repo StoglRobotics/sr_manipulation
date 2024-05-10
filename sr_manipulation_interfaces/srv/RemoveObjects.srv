@@ -1,7 +1,0 @@
-# Request
-string[] ids
----
-# Response
-ServiceResult result
-# helper to know which object were deleted or not (useful in case of partial removal)
-string[] removed_object_ids
