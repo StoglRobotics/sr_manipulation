@@ -495,14 +495,7 @@ class SceneManager(Node):
                 else:
                     object_mesh_paths.append("")
             else:
-                # if self.object_in_the_scene_storage.get(object_to_add.id, None) is not None:
-                #     self.get_logger().warn(
-                #         f"object_in_the_scene_storage add ob with id {object_to_add.id}"
-                #     )
                 self.object_in_the_scene_storage[object_to_add.id] = deepcopy(object_to_add)
-            # self.get_logger().error(
-            #         f"object_in_the_scene_storage{self.object_in_the_scene_storage}"
-            #     )
             objects_to_add.append(deepcopy(object_to_add))
             added_object_ids.append(obj.id)
 
@@ -643,6 +636,5 @@ class SceneManager(Node):
             marker.scale.z = 0.04
             marker.type = Marker.TEXT_VIEW_FACING
             marker_array.markers.append(deepcopy(marker))
-            
 
         self.markerarray_publisher.publish(marker_array)
