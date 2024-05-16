@@ -87,6 +87,8 @@ from geometry_msgs.msg import PoseStamped, Point
 # from shape_msgs.msg import SolidPrimitive
 from shape_msgs.msg import SolidPrimitive, Mesh, MeshTriangle
 
+from std_srvs.srv import Trigger
+
 # from sr_ros2_python_utils.transforms import TCPTransforms
 
 
@@ -167,6 +169,13 @@ class SceneManager(Node):
             GetObjectPose,
             "get_object_pose",
             self.get_object_pose_cb,
+            callback_group=self.server_callback_group,
+        )
+        
+        self.clear_scene_srv = self.create_service(
+            Trigger,
+            "clear_scene",
+            self.clear_scene_cb,
             callback_group=self.server_callback_group,
         )
 
@@ -331,7 +340,7 @@ class SceneManager(Node):
 
         if not ret:
             self.get_logger().error(f"Detaching object {object_id} has failed!")
-            # re-add the object to the store
+            # re-add the object to the scene storage
             self.attached_object_store[object_id] = attached_collision_object_to_detach
             return False
         self.get_logger().debug(f"Object {object_id} is successfully detached.")
@@ -422,7 +431,7 @@ class SceneManager(Node):
         # NOT IN THE TUTO
         planning_scene.is_diff = True
         # remove the object from the scene SHOWS A WARNING, DISABLING
-        # planning_scene.world.collision_objects.append(collision_object_to_remove)
+        #planning_scene.world.collision_objects.append(collision_object_to_remove)
         # attach it to the robot
         planning_scene.robot_state.attached_collision_objects.append(attached_collision_object)
         planning_scene.robot_state.is_diff = True
@@ -518,6 +527,8 @@ class SceneManager(Node):
     def remove_objects(self, object_ids: list[str]) -> list[int]:
         marker_objects_to_remove = []
         scene_objects_to_remove = []
+        attached_objects_to_remove = []
+        
         removed_maker_object_ids = []
         removed_scene_object_ids = []
 
@@ -533,6 +544,10 @@ class SceneManager(Node):
                 scene_objects_to_remove.append(deepcopy(object_to_remove))
                 removed_scene_object_ids.append(object_to_remove.id)
                 self.object_in_the_scene_storage.pop(object_to_remove.id, None)
+            if object_to_remove.id in self.attached_object_store:
+                scene_objects_to_remove.append(deepcopy(object_to_remove))
+                removed_scene_object_ids.append(object_to_remove.id)
+                self.attached_object_store.pop(object_to_remove.id, None)
 
         if len(removed_maker_object_ids):
             self.publish_as_marker(marker_objects_to_remove)
@@ -543,6 +558,27 @@ class SceneManager(Node):
         removed_object_ids = removed_maker_object_ids + removed_scene_object_ids
         return removed_object_ids
 
+    def clear_scene_cb(self, request: Trigger.Request, response: Trigger.Response):
+        self.get_logger().debug("Clearing the scene.")
+        ret = self.clear_scene()
+        response.success = True
+        response.message = "Scene cleared"
+            
+        return response
+        
+
+    def clear_scene(self):
+        objects_to_remove = []
+        objects_to_remove.extend([obj.id for obj in self.object_in_the_scene_storage.values()])
+        objects_to_remove.extend([obj.id for obj in self.object_in_marker_storage.values()])
+        objects_to_remove.extend([obj.id for obj in self.attached_object_store.values()])
+        
+        self.remove_all_markers()
+        return self.remove_objects(objects_to_remove)
+        
+        
+    # end def
+
     def publish_planning_scene(self, objects: list[CollisionObject]) -> None:
         planning_scene = PlanningScene()
         planning_scene.world.collision_objects = objects
@@ -550,6 +586,15 @@ class SceneManager(Node):
         self.apply_planning_scene(planning_scene)
         # do not use the publisher, for some reason if a new frame is required that is already there, it won't find it
         # self.planning_scene_diff_publisher.publish(planning_scene)
+
+    def remove_all_markers(self):
+        marker_array = MarkerArray()
+        marker = Marker()
+        marker.id = 0
+        marker.ns = "scene_manager_markers"
+        marker.action = Marker.DELETEALL
+        marker_array.markers.append(marker)
+        self.markerarray_publisher.publish(marker_array)
 
     def publish_as_marker(
         self, objects: list[CollisionObject], mesh_paths: list[str] = []
