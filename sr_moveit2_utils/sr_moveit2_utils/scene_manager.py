@@ -203,18 +203,22 @@ class SceneManager(Node):
 
         self.get_logger().info("Scene Manager initialized")
 
-    def planning_scene_cb(self, msg):
-        if len(msg.world.collision_objects) > 0:
+    def planning_scene_cb(self, msg: PlanningScene):
+        collision_objects: list[CollisionObject] = msg.world.collision_objects
+        if collision_objects:
             # We can update the positions in our dictionary if collision objects match
-            for obj in msg.world.collision_objects:
+            for obj in collision_objects:
                 self.object_in_the_scene_storage[obj.id] = obj
                 self.get_logger().info(
                     f"Found object {obj.id} with position {obj.pose.position} in scene with frame {obj.header.frame_id}"
                 )
 
-        if len(msg.robot_state.attached_collision_objects) > 0:
+        attached_collision_objects: list[AttachedCollisionObject] = (
+            msg.robot_state.attached_collision_objects
+        )
+        if attached_collision_objects:
             # We can update the positions in our dictionary if collision objects match
-            for attached_obj in msg.robot_state.attached_collision_objects:
+            for attached_obj in attached_collision_objects:
                 self.attached_object_store[attached_obj.object.id] = attached_obj
                 self.get_logger().info(
                     f"Found ATTACHED object {attached_obj.object.id} with position {attached_obj.object.pose.position} in scene"
@@ -233,7 +237,7 @@ class SceneManager(Node):
                 filename = uri[len(file_prefix) : len(uri)]  # noqa: E203 - whitespace before ':'
             else:
                 filename = uri
-            # with pyassimp_load('/home/guillaumew/workspaces/kh_kuka/install/moveit_wrapper/share/moveit_wrapper/resources/brick_pocket.stl') as scene:
+
             with pyassimp_load(filename) as scene:
                 if not scene.meshes or len(scene.meshes) == 0:
                     self.get_logger().warn("There are no meshes in the file")

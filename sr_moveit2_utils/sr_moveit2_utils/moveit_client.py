@@ -69,86 +69,90 @@ class MoveitClient:
         end_effector_link: str,
     ):
         self.node = node
-        self._pose_reference_frame = pose_reference_frame
-        self._end_effector_link = end_effector_link
+        self.pose_reference_frame = pose_reference_frame
+        self.end_effector_link = end_effector_link
 
-        self._planner_profiles_map: Dict[str, PlannerProfile] = {}
+        self.planner_profiles_map: Dict[str, PlannerProfile] = {}
 
-        self.declare_all_parameters()
+        self.declare_constraint_parameters()
 
-        self._planning_group = self.node.get_parameter("planning_group").value
+        self.planning_groups = self.declare_and_get_param(
+            "planning_groups", rclpy.Parameter.Type.STRING_ARRAY
+        )
+        self.default_planning_group = self.declare_and_get_param(
+            "default_planning_group", rclpy.Parameter.Type.STRING
+        )
 
-        self._valid_constraints = (
+        self.valid_constraints = (
             len(self.node.get_parameter("constraints.orientation.absolute_tolerance").value) == 3
         )
-        self._default_allowed_planning_time = self.node.get_parameter(
-            "default_allowed_planning_time"
-        ).value
-        if self._default_allowed_planning_time <= 0.0:
-            self._default_allowed_planning_time = 5.0
+        self.default_allowed_planning_time = self.declare_and_get_param(
+            "default_allowed_planning_time", rclpy.Parameter.Type.DOUBLE
+        )
+        if self.default_allowed_planning_time <= 0.0:
+            self.default_allowed_planning_time = 5.0
 
-        planner_profiles_names = self.node.get_parameter("planner_profiles.names").value
-        if len(planner_profiles_names) > 0:
-            planning_pipelines = self.node.get_parameter(
-                "planner_profiles.planning_pipelines"
-            ).value
-            planner_ids = self.node.get_parameter("planner_profiles.planner_ids").value
-            use_constraints = self.node.get_parameter("planner_profiles.use_constraints").value
-            is_cartonly_planners = self.node.get_parameter(
-                "planner_profiles.is_cartonly_planners"
-            ).value
-            requires_cart_interpolations = self.node.get_parameter(
-                "planner_profiles.requires_cart_interpolations"
-            ).value
-            allowed_planning_times = self.node.get_parameter(
-                "planner_profiles.allowed_planning_times"
-            ).value
-            num_planning_attempts = self.node.get_parameter(
-                "planner_profiles.num_planning_attempts"
-            ).value
-
-            if (
-                len(planning_pipelines) == len(planner_profiles_names)
-                and len(planner_ids) == len(planner_profiles_names)
-                and len(use_constraints) == len(planner_profiles_names)
-                and len(is_cartonly_planners) == len(planner_profiles_names)
-                and len(requires_cart_interpolations) == len(planner_profiles_names)
-                and len(allowed_planning_times) == len(planner_profiles_names)
-                and len(num_planning_attempts) == len(planner_profiles_names)
-            ):
-                for i in range(len(planner_profiles_names)):
-                    profile = PlannerProfile(
-                        name=planner_profiles_names[i],
-                        planning_pipeline=planning_pipelines[i],
-                        planner_id=planner_ids[i],
-                        num_planning_attempts=num_planning_attempts[i],
-                        is_cartonly=is_cartonly_planners[i],
-                        requires_cart_interpolation=requires_cart_interpolations[i],
-                        use_constraints=self._valid_constraints and use_constraints[i],
-                        allowed_planning_time=(
-                            allowed_planning_times[i]
-                            if allowed_planning_times[i] > 0.0
-                            else self._default_allowed_planning_time
-                        ),
-                    )
-                    self._planner_profiles_map[profile.name] = profile
-
-            # add a default profile in any case
-            default_profile = PlannerProfile(
-                name="default",
-                planning_pipeline="ompl",
-                planner_id="",
-                num_planning_attempts=1,
-                use_constraints=False,
-                requires_cart_interpolation=True,
-                is_cartonly=False,
-                allowed_planning_time=self._default_allowed_planning_time,
+        self.planner_profile_names = self.declare_and_get_param(
+            "planner_profile_names", rclpy.Parameter.Type.STRING_ARRAY
+        )
+        for profile_name in self.planner_profile_names:
+            planning_pipeline = self.declare_and_get_param(
+                f"planner_profiles.{profile_name}.planning_pipeline", rclpy.Parameter.Type.STRING
             )
-            self._planner_profiles_map["default"] = default_profile
+            planner_id = self.declare_and_get_param(
+                f"planner_profiles.{profile_name}.planner_id", rclpy.Parameter.Type.STRING
+            )
+            num_planning_attempts = self.declare_and_get_param(
+                f"planner_profiles.{profile_name}.num_planning_attempts",
+                rclpy.Parameter.Type.INTEGER,
+            )
+            is_cartonly = self.declare_and_get_param(
+                f"planner_profiles.{profile_name}.is_cartonly", rclpy.Parameter.Type.BOOL
+            )
+            requires_cart_interpolation = self.declare_and_get_param(
+                f"planner_profiles.{profile_name}.requires_cart_interpolation",
+                rclpy.Parameter.Type.BOOL,
+            )
+            use_constraints = self.declare_and_get_param(
+                f"planner_profiles.{profile_name}.use_constraints", rclpy.Parameter.Type.BOOL
+            )
+            allowed_planning_time = self.declare_and_get_param(
+                f"planner_profiles.{profile_name}.allowed_planning_time",
+                rclpy.Parameter.Type.DOUBLE,
+            )
+            self.planner_profiles_map[profile_name] = PlannerProfile(
+                name=profile_name,
+                planning_pipeline=planning_pipeline,
+                planner_id=planner_id,
+                num_planning_attempts=num_planning_attempts,
+                is_cartonly=is_cartonly,
+                requires_cart_interpolation=requires_cart_interpolation,
+                use_constraints=use_constraints,
+                allowed_planning_time=(
+                    allowed_planning_time
+                    if allowed_planning_time > 0.0
+                    else self.default_allowed_planning_time
+                ),
+            )
+
+        # add a default profile in any case
+        default_profile = PlannerProfile(
+            name="default",
+            planning_pipeline="ompl",
+            planner_id="",
+            num_planning_attempts=1,
+            use_constraints=False,
+            requires_cart_interpolation=True,
+            is_cartonly=False,
+            allowed_planning_time=self.default_allowed_planning_time,
+        )
+        self.planner_profiles_map["default"] = default_profile
 
         # validate that default profile exists
-        default_profile_name = self.node.get_parameter("default_profile_name").value
-        if default_profile_name not in self._planner_profiles_map:
+        default_profile_name = self.declare_and_get_param(
+            "default_profile_name", rclpy.Parameter.Type.STRING
+        )
+        if default_profile_name not in self.planner_profiles_map:
             self.node.set_parameters([rclpy.Parameter("default_profile_name", "default")])
 
         self.service_callback_group = MutuallyExclusiveCallbackGroup()
@@ -172,39 +176,18 @@ class MoveitClient:
             callback_group=self.action_client_callback_group,
         )
 
-        self._trajectory_execution_timeout = self.node.get_parameter(
-            "trajectory_execution_timeout"
-        ).value
+        self.trajectory_execution_timeout = self.declare_and_get_param(
+            "trajectory_execution_timeout", rclpy.Parameter.Type.DOUBLE
+        )
 
         self.node.get_logger().info("Moveit Client initialized.")
+        self.node.get_logger().info(f"planner_profiles_map: {self.planner_profiles_map}")
 
-    def declare_all_parameters(self):
-        self.node.declare_parameter("planning_group", rclpy.Parameter.Type.STRING)
-        self.node.declare_parameter("planner_profiles.names", rclpy.Parameter.Type.STRING_ARRAY)
-        self.node.declare_parameter(
-            "planner_profiles.planning_pipelines", rclpy.Parameter.Type.STRING_ARRAY
-        )
-        self.node.declare_parameter("trajectory_execution_timeout", rclpy.Parameter.Type.DOUBLE)
-        self.node.declare_parameter("default_allowed_planning_time", rclpy.Parameter.Type.DOUBLE)
-        self.node.declare_parameter("default_profile_name", rclpy.Parameter.Type.STRING)
-        self.node.declare_parameter(
-            "planner_profiles.planner_ids", rclpy.Parameter.Type.STRING_ARRAY
-        )
-        self.node.declare_parameter(
-            "planner_profiles.num_planning_attempts", rclpy.Parameter.Type.INTEGER_ARRAY
-        )
-        self.node.declare_parameter(
-            "planner_profiles.is_cartonly_planners", rclpy.Parameter.Type.BOOL_ARRAY
-        )
-        self.node.declare_parameter(
-            "planner_profiles.requires_cart_interpolations", rclpy.Parameter.Type.BOOL_ARRAY
-        )
-        self.node.declare_parameter(
-            "planner_profiles.use_constraints", rclpy.Parameter.Type.BOOL_ARRAY
-        )
-        self.node.declare_parameter(
-            "planner_profiles.allowed_planning_times", rclpy.Parameter.Type.DOUBLE_ARRAY
-        )
+    def declare_and_get_param(self, param_name: str, param_type: rclpy.Parameter.Type):
+        self.node.declare_parameter(param_name, param_type)
+        return self.node.get_parameter(param_name).value
+
+    def declare_constraint_parameters(self):
         self.node.declare_parameter(
             "constraints.orientation.frame_id", rclpy.Parameter.Type.STRING
         )
@@ -240,12 +223,12 @@ class MoveitClient:
             if ori_frame_id:
                 orientation_constraint.header.frame_id = ori_frame_id
             else:
-                orientation_constraint.header.frame_id = self._pose_reference_frame
+                orientation_constraint.header.frame_id = self.pose_reference_frame
             ori_link_name = self.node.get_parameter("constraints.orientation.link_name").value
             if ori_link_name:
                 orientation_constraint.link_name = ori_link_name
             else:
-                orientation_constraint.link_name = self._end_effector_link
+                orientation_constraint.link_name = self.end_effector_link
             orientation = self.node.get_parameter("constraints.orientation.orientation").value
             orientation_constraint.orientation.x = orientation[0]
             orientation_constraint.orientation.y = orientation[1]
@@ -266,12 +249,12 @@ class MoveitClient:
             if pos_frame_id:
                 position_constraint.header.frame_id = pos_frame_id
             else:
-                position_constraint.header.frame_id = self._pose_reference_frame
+                position_constraint.header.frame_id = self.pose_reference_frame
             pos_link_name = self.node.get_parameter("constraints.box.link_name").value
             if pos_link_name:
                 position_constraint.link_name = pos_link_name
             else:
-                position_constraint.link_name = self._end_effector_link
+                position_constraint.link_name = self.end_effector_link
 
             box_bounding_volume = SolidPrimitive()
             box_bounding_volume.type = SolidPrimitive.BOX
@@ -300,8 +283,8 @@ class MoveitClient:
         self, pose: Pose, pos_constraint_weight=1.0, ori_constraint_weight=1.0, ori_tolerance=1e-4
     ):
         position_constraint = PositionConstraint()
-        position_constraint.header.frame_id = self._pose_reference_frame
-        position_constraint.link_name = self._end_effector_link
+        position_constraint.header.frame_id = self.pose_reference_frame
+        position_constraint.link_name = self.end_effector_link
         position_constraint.target_point_offset.x = 0.0
         position_constraint.target_point_offset.y = 0.0
         position_constraint.target_point_offset.z = 0.0
@@ -315,8 +298,8 @@ class MoveitClient:
         position_constraint.weight = pos_constraint_weight
 
         orientation_constraint = OrientationConstraint()
-        orientation_constraint.header.frame_id = self._pose_reference_frame
-        orientation_constraint.link_name = self._end_effector_link
+        orientation_constraint.header.frame_id = self.pose_reference_frame
+        orientation_constraint.link_name = self.end_effector_link
         orientation_constraint.orientation = pose.orientation
         orientation_constraint.absolute_x_axis_tolerance = ori_tolerance
         orientation_constraint.absolute_y_axis_tolerance = ori_tolerance
@@ -348,6 +331,7 @@ class MoveitClient:
     def plan(
         self,
         pose: Pose,
+        group_name: str = None,
         cartesian_trajectory: bool = False,
         planner_profile: str = "default",
         velocity_scaling_factor: float = 1.0,
@@ -356,7 +340,10 @@ class MoveitClient:
         get_cart_path_req_avoid_collisions: bool = True,
     ) -> RobotTrajectory:
         if not allowed_planning_time or allowed_planning_time <= 0.0:
-            allowed_planning_time = self._default_allowed_planning_time
+            allowed_planning_time = self.default_allowed_planning_time
+
+        if not group_name:
+            group_name = self.default_planning_group
 
         self.node.get_logger().info(
             "inside plan(): "
@@ -371,13 +358,13 @@ class MoveitClient:
         self._move_group_client.wait_for_server()
         goal = MoveGroup.Goal()
 
-        profile = self._planner_profiles_map.get(planner_profile, None)
+        profile = self.planner_profiles_map.get(planner_profile, None)
         if not profile:
             default_profile_name = self.node.get_parameter("default_profile_name").value
-            profile = self._planner_profiles_map[default_profile_name]
+            profile = self.planner_profiles_map[default_profile_name]
 
         goal.request = MotionPlanRequest()
-        goal.request.group_name = self._planning_group
+        goal.request.group_name = group_name
         goal.request.pipeline_id = profile.planning_pipeline
         goal.request.planner_id = profile.planner_id
         goal.request.num_planning_attempts = profile.num_planning_attempts
@@ -423,8 +410,8 @@ class MoveitClient:
                 self.node.get_logger().info("Using cartesian interpolation.")
                 get_cart_path_req = GetCartesianPath.Request()
                 get_cart_path_req.start_state.is_diff = True
-                get_cart_path_req.group_name = self._planning_group
-                get_cart_path_req.header.frame_id = self._pose_reference_frame
+                get_cart_path_req.group_name = group_name
+                get_cart_path_req.header.frame_id = self.pose_reference_frame
                 get_cart_path_req.header.stamp = self.node.get_clock().now().to_msg()
                 get_cart_path_req.waypoints = [pose]
                 get_cart_path_req.max_step = 0.001
@@ -432,7 +419,7 @@ class MoveitClient:
                 if profile.use_constraints:
                     get_cart_path_req.path_constraints = goal.request.path_constraints
                 get_cart_path_req.avoid_collisions = get_cart_path_req_avoid_collisions
-                get_cart_path_req.link_name = self._end_effector_link
+                get_cart_path_req.link_name = self.end_effector_link
 
                 # sync call
                 response: GetCartesianPath.Response = self._get_cartesian_path_srv_cli.call(

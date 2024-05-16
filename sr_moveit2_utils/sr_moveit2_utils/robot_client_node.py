@@ -197,6 +197,7 @@ class RobotClient(Node):
         cartesian_trajectory: bool,
         planner_profile: str,
         plan_only: bool,
+        group_name: str = None,
         velocity_scaling_factor=None,
         acceleration_scaling_factor=None,
         allowed_planning_time: float = None,
@@ -221,6 +222,7 @@ class RobotClient(Node):
                 pose=pose,
                 cartesian_trajectory=cartesian_trajectory,
                 planner_profile=planner_profile,
+                group_name=group_name,
                 velocity_scaling_factor=velocity_scaling_factor,
                 acceleration_scaling_factor=acceleration_scaling_factor,
                 allowed_planning_time=allowed_planning_time,
@@ -333,6 +335,7 @@ class RobotClient(Node):
                 planner_profile=target.planner_profile,
                 velocity_scaling_factor=target.velocity_scaling_factor,
                 allowed_planning_time=request.allowed_planning_time,
+                plan_only=request.only_plan,
             )
             if not ret:
                 self.plan_move_to_feedback.state.plan_message = (
