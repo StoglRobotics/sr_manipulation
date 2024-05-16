@@ -1,9 +1,0 @@
-# Request
-ObjectDescriptor[] objects
-# if false add to moveit scene, if true publih to a markerarray topic
-bool as_marker
----
-# Response
-ServiceResult result
-# helper to know which object were added or not (useful in case of partial insertion)
-string[] added_object_ids
