@@ -341,7 +341,7 @@ class SceneManager(Node):
         if not ret:
             self.get_logger().error(f"Detaching object {object_id} has failed!")
             # re-add the object to the scene storage
-            self.attached_object_store[object_id] = attached_collision_object_to_detach store
+            self.attached_object_store[object_id] = attached_collision_object_to_detach
             return False
         self.get_logger().debug(f"Object {object_id} is successfully detached.")
         return True
