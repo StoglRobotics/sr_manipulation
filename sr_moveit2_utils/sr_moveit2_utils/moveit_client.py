@@ -181,7 +181,6 @@ class MoveitClient:
         )
 
         self.node.get_logger().info("Moveit Client initialized.")
-        self.node.get_logger().info(f"planner_profiles_map: {self.planner_profiles_map}")
 
     def declare_and_get_param(self, param_name: str, param_type: rclpy.Parameter.Type):
         self.node.declare_parameter(param_name, param_type)
@@ -331,7 +330,7 @@ class MoveitClient:
     def plan(
         self,
         pose: Pose,
-        group_name: str = None,
+        planning_group: str = None,
         cartesian_trajectory: bool = False,
         planner_profile: str = "default",
         velocity_scaling_factor: float = 1.0,
@@ -342,12 +341,13 @@ class MoveitClient:
         if not allowed_planning_time or allowed_planning_time <= 0.0:
             allowed_planning_time = self.default_allowed_planning_time
 
-        if not group_name:
-            group_name = self.default_planning_group
+        if not planning_group:
+            planning_group = self.default_planning_group
 
         self.node.get_logger().info(
             "inside plan(): "
             f"\npose={pose} "
+            f"\nplanning_group={planning_group} "
             f"\ncartesian_trajectory={cartesian_trajectory} "
             f"\nplanner_profile={planner_profile} "
             f"\nvelocity_scaling_factor={velocity_scaling_factor} "
@@ -364,7 +364,7 @@ class MoveitClient:
             profile = self.planner_profiles_map[default_profile_name]
 
         goal.request = MotionPlanRequest()
-        goal.request.group_name = group_name
+        goal.request.group_name = planning_group
         goal.request.pipeline_id = profile.planning_pipeline
         goal.request.planner_id = profile.planner_id
         goal.request.num_planning_attempts = profile.num_planning_attempts
@@ -410,7 +410,7 @@ class MoveitClient:
                 self.node.get_logger().info("Using cartesian interpolation.")
                 get_cart_path_req = GetCartesianPath.Request()
                 get_cart_path_req.start_state.is_diff = True
-                get_cart_path_req.group_name = group_name
+                get_cart_path_req.group_name = planning_group
                 get_cart_path_req.header.frame_id = self.pose_reference_frame
                 get_cart_path_req.header.stamp = self.node.get_clock().now().to_msg()
                 get_cart_path_req.waypoints = [pose]
@@ -419,7 +419,9 @@ class MoveitClient:
                 if profile.use_constraints:
                     get_cart_path_req.path_constraints = goal.request.path_constraints
                 get_cart_path_req.avoid_collisions = get_cart_path_req_avoid_collisions
-                get_cart_path_req.link_name = self.end_effector_link
+
+                # Optional as we are using the planning group's end effector link
+                # get_cart_path_req.link_name = self.end_effector_link
 
                 # sync call
                 response: GetCartesianPath.Response = self._get_cartesian_path_srv_cli.call(

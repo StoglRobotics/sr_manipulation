@@ -9,3 +9,4 @@ float64 blending_radius
 # names of the motion planner profile (pre-set of planning_pipeline, planner_id, constraints ...) to use
 # If no name is specified, a default motion planner will be used
 string planner_profile
+string planning_group

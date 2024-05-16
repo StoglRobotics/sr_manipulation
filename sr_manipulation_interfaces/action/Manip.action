@@ -17,6 +17,7 @@ bool disable_scene_handling
 bool only_plan
 # enforce the planner profile (empty means use default)
 string planner_profile
+string planning_group
 ---
 # final state effectively reached
 PlanExecState state

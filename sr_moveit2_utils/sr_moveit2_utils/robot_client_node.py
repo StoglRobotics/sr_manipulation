@@ -134,12 +134,16 @@ class RobotClient(Node):
             execute_callback=self.manip_execute_cb,
             callback_group=self.action_callback_group,
         )
+
+        self.declare_parameter("gripper_cmd_action_name", "/gripper_controller/gripper_cmd")
+        gripper_cmd_action_name = self.get_parameter("gripper_cmd_action_name").value
+
         # Gripper ActionClient
         self.action_client_callback_group = MutuallyExclusiveCallbackGroup()
         self.gripper_cli = ActionClient(
             self,
             GripperCommand,
-            "/gripper_controller/gripper_cmd",
+            gripper_cmd_action_name,
             callback_group=self.action_client_callback_group,
         )
         self.saved_plan = None
@@ -197,7 +201,7 @@ class RobotClient(Node):
         cartesian_trajectory: bool,
         planner_profile: str,
         plan_only: bool,
-        group_name: str = None,
+        planning_group: str = None,
         velocity_scaling_factor=None,
         acceleration_scaling_factor=None,
         allowed_planning_time: float = None,
@@ -211,6 +215,8 @@ class RobotClient(Node):
             f"\npose={pose}, "
             f"\ncartesian_trajectory={cartesian_trajectory}, "
             f"\nplanner_profile={planner_profile}, "
+            f"\nplan_only={plan_only}, "
+            f"\nplanning_group={planning_group}, "
             f"\nvelocity_scaling_factor={velocity_scaling_factor}, "
             f"\nacceleration_scaling_factor={acceleration_scaling_factor}, "
             f"\nallowed_planning_time={allowed_planning_time}"
@@ -222,7 +228,7 @@ class RobotClient(Node):
                 pose=pose,
                 cartesian_trajectory=cartesian_trajectory,
                 planner_profile=planner_profile,
-                group_name=group_name,
+                planning_group=planning_group,
                 velocity_scaling_factor=velocity_scaling_factor,
                 acceleration_scaling_factor=acceleration_scaling_factor,
                 allowed_planning_time=allowed_planning_time,
@@ -336,6 +342,7 @@ class RobotClient(Node):
                 velocity_scaling_factor=target.velocity_scaling_factor,
                 allowed_planning_time=request.allowed_planning_time,
                 plan_only=request.only_plan,
+                planning_group=target.planning_group,
             )
             if not ret:
                 self.plan_move_to_feedback.state.plan_message = (
