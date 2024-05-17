@@ -226,8 +226,8 @@ class MoveitClient:
             ori_link_name = self.node.get_parameter("constraints.orientation.link_name").value
             if ori_link_name:
                 orientation_constraint.link_name = ori_link_name
-            else:
-                orientation_constraint.link_name = self.end_effector_link
+            # else:
+            #     orientation_constraint.link_name = self.end_effector_link
             orientation = self.node.get_parameter("constraints.orientation.orientation").value
             orientation_constraint.orientation.x = orientation[0]
             orientation_constraint.orientation.y = orientation[1]
@@ -252,8 +252,8 @@ class MoveitClient:
             pos_link_name = self.node.get_parameter("constraints.box.link_name").value
             if pos_link_name:
                 position_constraint.link_name = pos_link_name
-            else:
-                position_constraint.link_name = self.end_effector_link
+            # else:
+            #     position_constraint.link_name = self.end_effector_link
 
             box_bounding_volume = SolidPrimitive()
             box_bounding_volume.type = SolidPrimitive.BOX
@@ -279,11 +279,22 @@ class MoveitClient:
         return constraints
 
     def initialize_goal_constraints(
-        self, pose: Pose, pos_constraint_weight=1.0, ori_constraint_weight=1.0, ori_tolerance=1e-4
-    ):
+        self,
+        pose: Pose,
+        end_effector_link: str,
+        pos_constraint_weight=1.0,
+        ori_constraint_weight=1.0,
+        ori_tolerance=1e-4,
+    ) -> Constraints:
+        if not end_effector_link:
+            self.node.get_logger().error(
+                "End effector link not provided, cannot initialize goal constraints."
+            )
+            return None
+
         position_constraint = PositionConstraint()
         position_constraint.header.frame_id = self.pose_reference_frame
-        position_constraint.link_name = self.end_effector_link
+        position_constraint.link_name = end_effector_link
         position_constraint.target_point_offset.x = 0.0
         position_constraint.target_point_offset.y = 0.0
         position_constraint.target_point_offset.z = 0.0
@@ -298,7 +309,7 @@ class MoveitClient:
 
         orientation_constraint = OrientationConstraint()
         orientation_constraint.header.frame_id = self.pose_reference_frame
-        orientation_constraint.link_name = self.end_effector_link
+        orientation_constraint.link_name = end_effector_link
         orientation_constraint.orientation = pose.orientation
         orientation_constraint.absolute_x_axis_tolerance = ori_tolerance
         orientation_constraint.absolute_y_axis_tolerance = ori_tolerance
@@ -330,6 +341,7 @@ class MoveitClient:
     def plan(
         self,
         pose: Pose,
+        end_effector_link: str = None,
         planning_group: str = None,
         cartesian_trajectory: bool = False,
         planner_profile: str = "default",
@@ -339,9 +351,17 @@ class MoveitClient:
         get_cart_path_req_avoid_collisions: bool = True,
     ) -> RobotTrajectory:
         if not allowed_planning_time or allowed_planning_time <= 0.0:
+            self.node.get_logger().warn(
+                f"Invalid allowed_planning_time: {allowed_planning_time}. Using default value: "
+                f"{self.default_allowed_planning_time}"
+            )
             allowed_planning_time = self.default_allowed_planning_time
 
         if not planning_group:
+            self.node.get_logger().warn(
+                f"Invalid planning_group: {planning_group}. Using default value: "
+                f"{self.default_planning_group}"
+            )
             planning_group = self.default_planning_group
 
         self.node.get_logger().info(
@@ -362,6 +382,10 @@ class MoveitClient:
         if not profile:
             default_profile_name = self.node.get_parameter("default_profile_name").value
             profile = self.planner_profiles_map[default_profile_name]
+            self.node.get_logger().warn(
+                f"Planner profile '{planner_profile}' not found. Using default profile "
+                f"'{default_profile_name}'"
+            )
 
         goal.request = MotionPlanRequest()
         goal.request.group_name = planning_group
@@ -391,12 +415,19 @@ class MoveitClient:
 
         if not cartesian_trajectory:
             if profile.is_cartonly:
-                raise ValueError(
+                self.node.get_logger().error(
                     f"The chosen planner ({profile.name}) does not support "
                     "non-cartesian trajectory planning."
                 )
+                return None
             self.node.get_logger().info("Using non-cartesian path planning.")
-            goal.request.goal_constraints.append(self.initialize_goal_constraints(pose))
+
+            constraints = self.initialize_goal_constraints(pose, end_effector_link)
+            if not constraints:
+                self.node.get_logger().error(error_msg.format(error_code="Invalid constraints"))
+                return None
+            goal.request.goal_constraints.append(constraints)
+
             action_result: MoveGroup.Result = self._move_group_client.send_goal(goal).result
             if action_result.error_code.val == MoveItErrorCodes.SUCCESS:
                 self.node.get_logger().info("Non-cartesian path planning succeeded.")
@@ -409,19 +440,21 @@ class MoveitClient:
             if profile.requires_cart_interpolation:
                 self.node.get_logger().info("Using cartesian interpolation.")
                 get_cart_path_req = GetCartesianPath.Request()
-                get_cart_path_req.start_state.is_diff = True
+                # get_cart_path_req.start_state.is_diff = True
                 get_cart_path_req.group_name = planning_group
-                get_cart_path_req.header.frame_id = self.pose_reference_frame
-                get_cart_path_req.header.stamp = self.node.get_clock().now().to_msg()
+                # get_cart_path_req.header.frame_id = self.pose_reference_frame
+                # get_cart_path_req.header.stamp = self.node.get_clock().now().to_msg()
                 get_cart_path_req.waypoints = [pose]
                 get_cart_path_req.max_step = 0.001
                 get_cart_path_req.jump_threshold = 0.0
-                if profile.use_constraints:
-                    get_cart_path_req.path_constraints = goal.request.path_constraints
+                # if profile.use_constraints:
+                #     get_cart_path_req.path_constraints = goal.request.path_constraints
+                get_cart_path_req.path_constraints = goal.request.path_constraints
                 get_cart_path_req.avoid_collisions = get_cart_path_req_avoid_collisions
 
                 # Optional as we are using the planning group's end effector link
-                # get_cart_path_req.link_name = self.end_effector_link
+                if end_effector_link:
+                    get_cart_path_req.link_name = self.end_effector_link
 
                 # sync call
                 response: GetCartesianPath.Response = self._get_cartesian_path_srv_cli.call(
@@ -434,7 +467,14 @@ class MoveitClient:
                     self.node.get_logger().error(error_msg.format(error_code=response.error_code))
                     return None
             else:
-                goal.request.goal_constraints.append(self.initialize_goal_constraints(pose))
+                constraints = self.initialize_goal_constraints(pose, end_effector_link)
+                if not constraints:
+                    self.node.get_logger().error(
+                        error_msg.format(error_code="Invalid constraints")
+                    )
+                    return None
+                goal.request.goal_constraints.append(constraints)
+
                 action_result: MoveGroup.Result = self._move_group_client.send_goal(goal).result
                 if action_result.error_code.val == MoveItErrorCodes.SUCCESS:
                     self.node.get_logger().info("Cartesian path planning succeeded.")

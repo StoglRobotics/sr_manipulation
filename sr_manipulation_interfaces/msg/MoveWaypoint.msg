@@ -10,3 +10,4 @@ float64 blending_radius
 # If no name is specified, a default motion planner will be used
 string planner_profile
 string planning_group
+string end_effector_link

@@ -135,17 +135,23 @@ class RobotClient(Node):
             callback_group=self.action_callback_group,
         )
 
-        self.declare_parameter("gripper_cmd_action_name", "/gripper_controller/gripper_cmd")
-        gripper_cmd_action_name = self.get_parameter("gripper_cmd_action_name").value
+        self.declare_parameter("gripper_cmd_action_names", ["/gripper_controller/gripper_cmd"])
+        gripper_cmd_action_names = self.get_parameter("gripper_cmd_action_names").value
+
+        self.default_gripper_cmd_action_name = gripper_cmd_action_names[0]
 
         # Gripper ActionClient
         self.action_client_callback_group = MutuallyExclusiveCallbackGroup()
-        self.gripper_cli = ActionClient(
-            self,
-            GripperCommand,
-            gripper_cmd_action_name,
-            callback_group=self.action_client_callback_group,
-        )
+        self.gripper_clients = {
+            gripper_cmd_action_name: ActionClient(
+                self,
+                GripperCommand,
+                gripper_cmd_action_name,
+                callback_group=self.action_client_callback_group,
+            )
+            for gripper_cmd_action_name in gripper_cmd_action_names
+        }
+
         self.saved_plan = None
 
         self.attach_object_cli = self.create_client(
@@ -201,6 +207,7 @@ class RobotClient(Node):
         cartesian_trajectory: bool,
         planner_profile: str,
         plan_only: bool,
+        end_effector_link: str = None,
         planning_group: str = None,
         velocity_scaling_factor=None,
         acceleration_scaling_factor=None,
@@ -226,6 +233,7 @@ class RobotClient(Node):
         if plan_only is True or self.saved_plan is None:
             planned_trajectory = self.moveit_client.plan(
                 pose=pose,
+                end_effector_link=end_effector_link,
                 cartesian_trajectory=cartesian_trajectory,
                 planner_profile=planner_profile,
                 planning_group=planning_group,
@@ -337,6 +345,7 @@ class RobotClient(Node):
 
             ret = self.send_move_request(
                 pose,
+                end_effector_link=target.end_effector_link,
                 cartesian_trajectory=target.cart,
                 planner_profile=target.planner_profile,
                 velocity_scaling_factor=target.velocity_scaling_factor,
@@ -521,7 +530,8 @@ class RobotClient(Node):
                 if manip == ManipType.MANIP_REACH_PREGRASP:
                     ret = self.send_move_request(
                         reach_pose_robot_base_frame,
-                        cartesian_trajectory=False,
+                        end_effector_link=request.end_effector_link,
+                        cartesian_trajectory=request.cartesian_trajectory,
                         planner_profile=(
                             # request.planner_profile if request.planner_profile else "ompl"
                             request.planner_profile
@@ -534,7 +544,8 @@ class RobotClient(Node):
                 if manip == ManipType.MANIP_REACH_PREPLACE:
                     ret = self.send_move_request(
                         reach_pose_robot_base_frame,
-                        cartesian_trajectory=False,
+                        end_effector_link=request.end_effector_link,
+                        cartesian_trajectory=request.cartesian_trajectory,
                         planner_profile=(
                             request.planner_profile
                             if request.planner_profile
@@ -658,7 +669,10 @@ class RobotClient(Node):
                 # do the actual planning and execution
                 ret = self.send_move_request(
                     move_pose_robot_base_frame,
-                    cartesian_trajectory=True,
+                    end_effector_link=request.end_effector_link,
+                    cartesian_trajectory=(
+                        request.cartesian_trajectory if request.planner_profile else True
+                    ),
                     planner_profile=(
                         request.planner_profile if request.planner_profile else "pilz_lin"
                     ),
@@ -679,20 +693,23 @@ class RobotClient(Node):
                 ManipType.MANIP_GRIPPER_OPEN,
                 ManipType.MANIP_GRIPPER_CLOSE,
             ]:
+                if request.gripper_cmd_action_name:
+                    gripper_cmd_action_name = request.gripper_cmd_action_name
+                else:
+                    gripper_cmd_action_name = self.default_gripper_cmd_action_name
                 if manip == ManipType.MANIP_GRASP or manip == ManipType.MANIP_GRIPPER_CLOSE:
                     # First, we handle gripper actions
-                    door_msg = GripperCommand.Goal()
-                    door_msg.command.position = 0.022
-                    self.gripper_cli.wait_for_server()
-                    # future = self.gripper_cli.send_goal(door_msg)
-                    self.gripper_cli.send_goal(door_msg)
+                    gripper_cmd = GripperCommand.Goal()
+                    gripper_cmd.command.position = 0.022
+                    self.gripper_clients[gripper_cmd_action_name].wait_for_server()
+                    self.gripper_clients[gripper_cmd_action_name].send_goal(gripper_cmd)
                     # additionally handle attach
                     if manip == ManipType.MANIP_GRASP:
                         # if success attach
                         if not request.disable_scene_handling:
                             ret = self.attach(
                                 request.object_id,
-                                self.tool_link,
+                                request.end_effector_link,
                                 self.allowed_touch_links,
                             )
                         else:
@@ -707,11 +724,10 @@ class RobotClient(Node):
                             continue
                 if manip == ManipType.MANIP_RELEASE or manip == ManipType.MANIP_GRIPPER_OPEN:
                     # First, we handle gripper actions
-                    door_msg = GripperCommand.Goal()
-                    door_msg.command.position = 0.0
-                    self.gripper_cli.wait_for_server()
-                    # future = self.gripper_cli.send_goal(door_msg)
-                    self.gripper_cli.send_goal(door_msg)
+                    gripper_cmd = GripperCommand.Goal()
+                    gripper_cmd.command.position = 0.0
+                    self.gripper_clients[gripper_cmd_action_name].wait_for_server()
+                    self.gripper_clients[gripper_cmd_action_name].send_goal(gripper_cmd)
                     # Additionally handle detach
                     if manip == ManipType.MANIP_RELEASE:
                         # if success detach
@@ -734,7 +750,9 @@ class RobotClient(Node):
         self.active_goal = None
         return result
 
-    def did_manip_plan_succeed(self, plan_exec_success: bool, action_name: str, goal_handle):
+    def did_manip_plan_succeed(
+        self, plan_exec_success: bool, action_name: str, goal_handle: ServerGoalHandle
+    ):
         if plan_exec_success:
             self.manip_feedback.state.plan_state = PlanExecState.PLAN_SUCCESS
             self.manip_feedback.state.exec_state = PlanExecState.EXEC_SUCCESS
@@ -754,7 +772,7 @@ class RobotClient(Node):
         req.id = id
         req.link_name = attach_link
         req.touch_links = allowed_touch_links
-        response = self.attach_object_cli.call(req)
+        response: AttachObject.Response = self.attach_object_cli.call(req)
         if response.result.state != ServiceResult.SUCCESS:
             self.get_logger().error(f"Attach object {id} has failed.")
             return False
@@ -764,7 +782,7 @@ class RobotClient(Node):
     def detach(self, id: str):
         req = DetachObject.Request()
         req.id = id
-        response = self.detach_object_cli.call(req)
+        response: DetachObject.Response = self.detach_object_cli.call(req)
         if response.result.state != ServiceResult.SUCCESS:
             self.get_logger().error(f"Detach object {id} has failed.")
             return False
