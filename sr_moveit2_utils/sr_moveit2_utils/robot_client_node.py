@@ -529,6 +529,7 @@ class RobotClient(Node):
                             else "pilz_ptp"
                         ),
                         plan_only=self.plan_first,
+                        planning_group=request.planning_group,
                     )
                 if manip == ManipType.MANIP_REACH_PREPLACE:
                     ret = self.send_move_request(
@@ -541,6 +542,7 @@ class RobotClient(Node):
                             else "pilz_ptp"
                         ),
                         plan_only=self.plan_first,
+                        planning_group=request.planning_group,
                     )
 
                 if not self.did_manip_plan_succeed(ret, "Reach", goal_handle):
@@ -661,6 +663,7 @@ class RobotClient(Node):
                         request.planner_profile if request.planner_profile else "pilz_lin"
                     ),
                     plan_only=self.plan_first,
+                    planning_group=request.planning_group,
                 )
 
                 if not self.did_manip_plan_succeed(ret, "Move", goal_handle):
