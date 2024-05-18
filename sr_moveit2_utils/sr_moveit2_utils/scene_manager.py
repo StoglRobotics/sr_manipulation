@@ -255,25 +255,33 @@ class SceneManager(Node):
             return None
         return mesh
 
-    def collision_from_object_descriptor(self, obj: ObjectDescriptor) -> CollisionObject:
+    def create_collision_object(self, obj: ObjectDescriptor) -> CollisionObject:
         col_object = CollisionObject()
         col_object.id = obj.id
         col_object.header.frame_id = obj.pose.header.frame_id
         col_object.pose = obj.pose.pose
         # use given offset
         pose = obj.shape_pose
-        if not obj.paths_to_mesh:
+        if obj.paths_to_mesh:
+            for mesh_filename in obj.paths_to_mesh:
+                mesh = self.make_mesh(mesh_filename)
+                if mesh is not None:
+                    col_object.meshes.append(mesh)
+                    col_object.mesh_poses.append(pose)
+                else:
+                    # could not find a mesh so we return a error for this object
+                    raise RuntimeError("Collision mesh for mesh file {mesh_filename} not found.")
+        elif obj.bbox_size.x != 0.0 or obj.bbox_size.y != 0.0 or obj.bbox_size.z != 0.0:
             primitive = SolidPrimitive()
             primitive.type = SolidPrimitive.BOX
             primitive.dimensions = [obj.bbox_size.x, obj.bbox_size.y, obj.bbox_size.z]
             col_object.primitives.append(primitive)
             col_object.primitive_poses.append(pose)
         else:
-            for mesh_filename in obj.paths_to_mesh:
-                mesh = self.make_mesh(mesh_filename)
-                if mesh is not None:
-                    col_object.meshes.append(mesh)
-                    col_object.mesh_poses.append(pose)
+            # as there is no default uninitialized state for Vetor3 messages and we don't want to add invisible objects to scene we treat a bbox as uninitialized and return a error
+            raise RuntimeError(
+                "No mesh file or bounding box given.(Bounding Box is [0.0, 0.0, 0.0])"
+            )
         return col_object
 
     def get_object_pose_cb(
@@ -463,30 +471,47 @@ class SceneManager(Node):
         self, request: AddObjects.Request, response: AddObjects.Response
     ) -> AddObjects.Response:
         self.get_logger().debug("Adding the objects into the world at the given location.")
-        added_object_ids = self.add_objects(request.objects, request.as_marker)
+        added_object_ids, not_added_object_ids = self.add_objects(
+            request.objects, request.as_marker
+        )
         if added_object_ids:
             if len(request.objects) == len(added_object_ids):
                 response.result.state = ServiceResult.SUCCESS
+                response.result.message = f"Added all objects to scene."
             else:
                 response.result.state = ServiceResult.PARTIAL
+                response.result.message = f"Partially added objects: {len(added_object_ids)} added, but {len(not_added_object_ids)} failed to add."
 
-            response.result.message = f"Added {len(added_object_ids)} objects"
-            response.added_object_ids = added_object_ids
         else:
             response.result.state = ServiceResult.FAILED
-            response.result.message = "No objects added"
+            response.result.message = f"Failed to add objects to scene."
+
+        response.added_object_ids = added_object_ids
+        response.not_added_object_ids = not_added_object_ids
 
         return response
 
     def add_objects(self, objects: ObjectDescriptor, as_markers=False) -> list[int]:
         objects_to_add = []
         added_object_ids = []
+        not_added_object_ids = []
         object_mesh_paths = []  # needed for markers to get the full resource
 
         for obj in objects:
-            object_to_add = self.collision_from_object_descriptor(obj)
+            # check if object is already added to not override existing obj
+            if self.object_in_marker_storage.get(obj.id, None) is None:
+                self.get_logger().warn(f"Object with id {obj.id} already added. Skipping")
+                not_added_object_ids.append(obj.id)
+                continue
 
-            object_to_add.operation = CollisionObject.ADD
+            try:
+                object_to_add = self.create_collision_object(obj)
+                object_to_add.operation = CollisionObject.ADD
+            except RuntimeError as e:
+                self.get_logger().warn(
+                    f"Adding of object with id {obj.id} failed because of following exception :{e}"
+                )
+                not_added_object_ids.append(obj.id)
 
             if as_markers:
                 self.object_in_marker_storage[object_to_add.id] = deepcopy(object_to_add)
@@ -504,7 +529,7 @@ class SceneManager(Node):
         else:
             self.publish_planning_scene(objects_to_add)
             # TODO(gwalck) check if objects were added
-        return added_object_ids
+        return added_object_ids, not_added_object_ids
 
     def remove_objects_cb(
         self, request: RemoveObjects.Request, response: RemoveObjects.Response
