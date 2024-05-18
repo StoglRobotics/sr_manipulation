@@ -1,5 +1,7 @@
 # Copyright (c) 2023, Stogl Robotics Consulting
 #
+# BSD 3-Clause License
+#
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
 #
@@ -86,24 +88,7 @@ class RobotClient(Node):
         self.active_goal = None
         self.plan_move_to_feedback = PlanMoveTo.Feedback()
         self.manip_feedback = Manip.Feedback()
-        # raises type object 'ManipType' has no attribute '_RobotClient__constants'
-        # self.SUPPORTED_MANIP_ACTIONS = [value for key, value in ManipType.__constants.iteritems()] #TODO why does this not work
 
-        self.SUPPORTED_MANIP_ACTIONS = [
-            ManipType.MANIP_MOVE_GRASP,
-            ManipType.MANIP_MOVE_POSTGRASP,
-            ManipType.MANIP_MOVE_PLACE,
-            ManipType.MANIP_MOVE_PLACE_ADJUST,
-            ManipType.MANIP_MOVE_POSTPLACE,
-            ManipType.MANIP_REACH_PREGRASP,
-            ManipType.MANIP_REACH_PREPLACE,
-            ManipType.MANIP_GRASP,
-            ManipType.MANIP_MOVE_GRASP_ADJUST,
-            ManipType.MANIP_RELEASE,
-            ManipType.MANIP_GRIPPER_ADJUST,
-            ManipType.MANIP_GRIPPER_OPEN,
-            ManipType.MANIP_GRIPPER_CLOSE,
-        ]
         self.MANIP_ACTIONS_TO_STR = {
             ManipType.MANIP_MOVE_GRASP: "MoveTo Grasp Pose",
             ManipType.MANIP_MOVE_POSTGRASP: "MoveTo Post Grasp Pose",
@@ -119,6 +104,7 @@ class RobotClient(Node):
             ManipType.MANIP_GRIPPER_OPEN: "Open Gripper",
             ManipType.MANIP_GRIPPER_CLOSE: "Close Gripper",
         }
+        self.SUPPORTED_MANIP_ACTIONS = list(self.MANIP_ACTIONS_TO_STR.keys())
 
         # tools
         self.visualization_publisher = VisualizatonPublisher(self)
@@ -145,6 +131,7 @@ class RobotClient(Node):
 
         self.init_gripper()
         self.get_logger().info("Init action servers ...")
+
         # action servers
         # plan_move_to and manipulate action servers are not allowed to run simultaneously. so we use a Mutually exclusive callback group
         self.action_callback_group = MutuallyExclusiveCallbackGroup()
