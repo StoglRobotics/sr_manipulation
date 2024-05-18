@@ -499,7 +499,7 @@ class SceneManager(Node):
 
         for obj in objects:
             # check if object is already added to not override existing obj
-            if self.object_in_marker_storage.get(obj.id, None) is None:
+            if obj.id in self.object_in_marker_storage.keys():
                 self.get_logger().warn(f"Object with id {obj.id} already added. Skipping")
                 not_added_object_ids.append(obj.id)
                 continue
