@@ -44,6 +44,7 @@ from moveit_msgs.msg import (
     PlanningOptions,
     MoveItErrorCodes,
 )
+from trajectory_msgs.msg import JointTrajectory
 from moveit_msgs.srv import GetCartesianPath
 from geometry_msgs.msg import Pose
 from shape_msgs.msg import SolidPrimitive
@@ -320,6 +321,23 @@ class MoveitClient:
         constraints.position_constraints.append(position_constraint)
         constraints.orientation_constraints.append(orientation_constraint)
         return constraints
+
+    def execute_joint_trajectory(self, joint_trajectory: JointTrajectory) -> bool:
+        self.node.get_logger().info("Executing joint trajectory")
+        self._execute_trajectory_client.wait_for_server()
+        goal = ExecuteTrajectory.Goal()
+        goal.trajectory.joint_trajectory = joint_trajectory
+        exec_result: ExecuteTrajectory.Result = self._execute_trajectory_client.send_goal(
+            goal
+        ).result
+        if exec_result.error_code.val == MoveItErrorCodes.SUCCESS:
+            self.node.get_logger().info("Joint trajectory execution succeeded.")
+            return True
+        else:
+            self.node.get_logger().error(
+                f"Joint trajectory execution failed with error code: {exec_result.error_code}"
+            )
+            return False
 
     def execute(self, plan: RobotTrajectory) -> bool:
         self.node.get_logger().info("Executing planned trajectory")

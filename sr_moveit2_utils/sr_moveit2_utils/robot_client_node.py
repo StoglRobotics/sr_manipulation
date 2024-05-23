@@ -35,6 +35,8 @@ from copy import deepcopy
 from typing import Sequence
 
 import rclpy
+import rclpy.duration
+from rclpy.time import Time
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from rclpy.action import ActionServer, GoalResponse, CancelResponse, ActionClient
@@ -42,17 +44,17 @@ from rclpy.action.server import ServerGoalHandle, GoalStatus
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
 from sr_manipulation_interfaces.action import PlanMoveTo, Manip
 from sr_manipulation_interfaces.msg import ManipType, PlanExecState, ServiceResult, MoveWaypoint
-from sr_manipulation_interfaces.srv import AttachObject, DetachObject
+from sr_manipulation_interfaces.srv import AttachObject, DetachObject, ExecuteJointTrajectory
 
 from control_msgs.action import GripperCommand
-
+from trajectory_msgs.msg import JointTrajectory
 from geometry_msgs.msg import PoseStamped, Vector3Stamped, Pose
 from sr_moveit2_utils.moveit_client import MoveitClient
 from sr_ros2_python_utils.transforms import TCPTransforms
 from sr_ros2_python_utils.visualization_publishers import VisualizatonPublisher
 import numpy as np
 from std_srvs.srv import Trigger
-from std_msgs.msg import String
+from std_msgs.msg import String, Float64
 
 
 def wait_for_response(future, client):
@@ -106,6 +108,16 @@ class RobotClient(Node):
             "/stop_trajectory_execution",
             self.stop_trajectory_cb,
             callback_group=self.service_callback_group,
+        )
+        self.execute_joint_trajectory_srv = self.create_service(
+            ExecuteJointTrajectory,
+            "/execute_joint_trajectory",
+            self.execute_joint_trajectory_cb,
+            callback_group=self.service_callback_group,
+        )
+
+        self.trajectory_exec_time_publisher = self.create_publisher(
+            Float64, "/trajectory_execution_time", 10
         )
 
         self.stop_trajectory_publisher = self.create_publisher(
@@ -194,12 +206,34 @@ class RobotClient(Node):
 
         self.get_logger().info("Robot Client ready")
 
+    def execute_joint_trajectory_cb(
+        self, request: ExecuteJointTrajectory.Request, response: ExecuteJointTrajectory.Response
+    ):
+        self.get_logger().info("Received new joint trajectory request...")
+        start: Time = self.get_clock().now()
+        success = self.moveit_client.execute_joint_trajectory(request.joint_trajectory)
+        exec_duration: rclpy.duration.Duration = self.get_clock().now() - start
+        if success:
+            self.get_logger().info("Execution succeeded in execute_joint_trajectory_cb")
+            self.publish_execution_time(exec_duration, "execute_joint_trajectory_cb")
+        else:
+            self.get_logger().error("Execution failed in execute_joint_trajectory_cb")
+        response.success = success
+        return response
+
     def stop_trajectory_cb(self, request: Trigger.Request, response: Trigger.Response):
         msg = String()
         msg.data = "stop"
         self.stop_trajectory_publisher.publish(msg)
         response.success = True
         return response
+
+    def publish_execution_time(self, duration: rclpy.duration.Duration, name: str):
+        exec_time_s = duration.nanoseconds / 1e9
+        self.get_logger().info(f"Execution duration of '{name}': {exec_time_s:.3f} seconds.")
+        msg = Float64()
+        msg.data = exec_time_s
+        self.trajectory_exec_time_publisher.publish(msg)
 
     def send_move_request(
         self,
@@ -254,10 +288,14 @@ class RobotClient(Node):
         if plan_only:
             return True
 
+        start: Time = self.get_clock().now()
         exec_success = self.moveit_client.execute(self.saved_plan)
+        exec_duration: rclpy.duration.Duration = self.get_clock().now() - start
+
         self.saved_plan = None
         if exec_success:
             self.get_logger().info("Execution succeeded in send_move_request")
+            self.publish_execution_time(exec_duration, "send_move_request")
             return True
         else:
             self.get_logger().error(
