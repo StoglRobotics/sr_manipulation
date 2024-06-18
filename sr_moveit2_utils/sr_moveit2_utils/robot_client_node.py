@@ -362,10 +362,16 @@ class RobotClient(Node):
         pose_source_frame = deepcopy(source_pose)
         if use_offset:
             offset_transformed = self.tcp_transforms.to_from_tcp_vec3_conversion(
-                offset_dir, offset_dir.header.frame_id, pose_source_frame.header.frame_id
+                offset_dir, pose_source_frame.header.frame_id
             )
             #  add offset
-            dir = np.array([offset_transformed.x, offset_transformed.y, offset_transformed.z])
+            dir = np.array(
+                [
+                    offset_transformed.vector.x,
+                    offset_transformed.vector.y,
+                    offset_transformed.vector.z,
+                ]
+            )
             offset = dir * offset_distance
             pose_source_frame.pose.position.x += offset[0]
             pose_source_frame.pose.position.y += offset[1]
@@ -457,17 +463,19 @@ class RobotClient(Node):
                     ret = self.move_client.send_move_request(
                         reach_pose_robot_base_frame,
                         cartesian_trajectory=False,
-                        planner_profile=request.planner_profile
-                        if request.planner_profile
-                        else "ompl",
+                        planner_profile=(
+                            request.planner_profile if request.planner_profile else "ompl"
+                        ),
                     )
                 if manip == ManipType.MANIP_REACH_PREPLACE:
                     ret = self.move_client.send_move_request(
                         reach_pose_robot_base_frame,
                         cartesian_trajectory=False,
-                        planner_profile=request.planner_profile
-                        if request.planner_profile
-                        else "ompl_with_constraints",
+                        planner_profile=(
+                            request.planner_profile
+                            if request.planner_profile
+                            else "ompl_with_constraints"
+                        ),
                     )
 
                 if not self.did_manip_plan_succeed(ret, "Reach", goal_handle):
@@ -585,9 +593,9 @@ class RobotClient(Node):
                     move_pose_robot_base_frame,
                     cartesian_trajectory=True,
                     velocity_scaling_factor=0.1,
-                    planner_profile=request.planner_profile
-                    if request.planner_profile
-                    else "pilz_lin",
+                    planner_profile=(
+                        request.planner_profile if request.planner_profile else "pilz_lin"
+                    ),
                 )
 
                 if not self.did_manip_plan_succeed(ret, "Move", goal_handle):
