@@ -361,7 +361,7 @@ class RobotClient(Node):
     ) -> Pose:
         pose_source_frame = deepcopy(source_pose)
         if use_offset:
-            offset_transformed = self.tcp_transforms.to_from_tcp_vec3_conversion(
+            offset_transformed = self.tcp_transforms.transform_vector3stamped_to_target_frame(
                 offset_dir, pose_source_frame.header.frame_id
             )
             #  add offset
