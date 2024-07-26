@@ -147,12 +147,18 @@ class RobotClient(Node):
             callback_group=self.action_callback_group,
         )
 
-        self.declare_parameter("gripper_cmd_action_names", ["/gripper_controller/gripper_cmd"])
-        gripper_cmd_action_names = self.get_parameter("gripper_cmd_action_names").value
+        gripper_cmd_action_names = self.declare_parameter(
+            "gripper_cmd_action_names", rclpy.Parameter.Type.STRING_ARRAY
+        ).value
+        if not gripper_cmd_action_names:
+            gripper_cmd_action_names = []
+        self.get_logger().info(f"Gripper action names: {gripper_cmd_action_names}")
 
-        self.default_gripper_cmd_action_name = gripper_cmd_action_names[0]
+        self.default_gripper_cmd_action_name = None
+        if gripper_cmd_action_names:
+            self.default_gripper_cmd_action_name = gripper_cmd_action_names[0]
 
-        # Gripper ActionClient
+        # Gripper ActionClients
         self.action_client_callback_group = MutuallyExclusiveCallbackGroup()
         self.gripper_clients = {
             gripper_cmd_action_name: ActionClient(
