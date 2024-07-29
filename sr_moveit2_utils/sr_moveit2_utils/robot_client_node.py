@@ -43,8 +43,17 @@ from rclpy.action import ActionServer, GoalResponse, CancelResponse, ActionClien
 from rclpy.action.server import ServerGoalHandle, GoalStatus
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
 from sr_manipulation_interfaces.action import PlanMoveTo, Manip
-from sr_manipulation_interfaces.msg import ManipType, PlanExecState, ServiceResult, MoveWaypoint
-from sr_manipulation_interfaces.srv import AttachObject, DetachObject, ExecuteJointTrajectory
+from sr_manipulation_interfaces.msg import (
+    ManipType,
+    PlanExecState,
+    ServiceResult,
+    MoveWaypoint,
+)
+from sr_manipulation_interfaces.srv import (
+    AttachObject,
+    DetachObject,
+    ExecuteJointTrajectory,
+)
 
 from control_msgs.action import GripperCommand
 from trajectory_msgs.msg import JointTrajectory
@@ -213,7 +222,9 @@ class RobotClient(Node):
         self.get_logger().info("Robot Client ready")
 
     def execute_joint_trajectory_cb(
-        self, request: ExecuteJointTrajectory.Request, response: ExecuteJointTrajectory.Response
+        self,
+        request: ExecuteJointTrajectory.Request,
+        response: ExecuteJointTrajectory.Response,
     ):
         self.get_logger().info("Received new joint trajectory request...")
         start: Time = self.get_clock().now()
@@ -236,7 +247,9 @@ class RobotClient(Node):
 
     def publish_execution_time(self, duration: rclpy.duration.Duration, name: str):
         exec_time_s = duration.nanoseconds / 1e9
-        self.get_logger().info(f"Execution duration of '{name}': {exec_time_s:.3f} seconds.")
+        self.get_logger().info(
+            f"Execution duration of '{name}': {exec_time_s:.3f} seconds."
+        )
         msg = Float64()
         msg.data = exec_time_s
         self.trajectory_exec_time_publisher.publish(msg)
@@ -332,7 +345,9 @@ class RobotClient(Node):
             # validate the goal
             # TODO(gwalck) check the target is a known frame ? otherwise converted it ?
             if len(goal.targets) == 0:
-                self.get_logger().error("PlanMoveTo goal rejected because there is no target.")
+                self.get_logger().error(
+                    "PlanMoveTo goal rejected because there is no target."
+                )
                 return GoalResponse.REJECT
             if (
                 len(goal.targets) > 1
@@ -429,7 +444,9 @@ class RobotClient(Node):
 
     def validate_manip_goal(self, goal: Manip.Goal) -> bool:
         if not goal.manipulation_sequence:
-            self.get_logger().warn("Manip goal rejected. no manipulation sequence provided.")
+            self.get_logger().warn(
+                "Manip goal rejected. no manipulation sequence provided."
+            )
             return False
         for manip in goal.manipulation_sequence:
             if manip not in self.SUPPORTED_MANIP_ACTIONS:
@@ -443,7 +460,9 @@ class RobotClient(Node):
 
     def manip_goal_cb(self, goal: Manip.Goal):
         if self.active_goal is not None:
-            self.get_logger().warn("Manip goal rejected because there is already an active goal.")
+            self.get_logger().warn(
+                "Manip goal rejected because there is already an active goal."
+            )
             return GoalResponse.REJECT
         else:
             # validate the goal
@@ -478,7 +497,9 @@ class RobotClient(Node):
                 pose_source_frame.header.frame_id,
             )
             #  add offset
-            dir = np.array([offset_transformed.x, offset_transformed.y, offset_transformed.z])
+            dir = np.array(
+                [offset_transformed.x, offset_transformed.y, offset_transformed.z]
+            )
             offset = dir * offset_distance
             pose_source_frame.pose.position.x += offset[0]
             pose_source_frame.pose.position.y += offset[1]
@@ -510,8 +531,9 @@ class RobotClient(Node):
         goal_handle.publish_feedback(self.manip_feedback)
 
         # process the sequence
-        while not goal_handle.is_cancel_requested and self.manip_feedback.current_step < len(
-            request.manipulation_sequence
+        while (
+            not goal_handle.is_cancel_requested
+            and self.manip_feedback.current_step < len(request.manipulation_sequence)
         ):
             # get current manip
             self.manip_feedback.current_manip = request.manipulation_sequence[
@@ -626,7 +648,9 @@ class RobotClient(Node):
                 # no offset
                 if manip == ManipType.MANIP_MOVE_GRASP:
                     # compute pick pose
-                    move_pose_robot_base_frame = self.compute_manip_pose(request.pick.grasp_pose)
+                    move_pose_robot_base_frame = self.compute_manip_pose(
+                        request.pick.grasp_pose
+                    )
                     if move_pose_robot_base_frame is None:
                         break
                     self.visualization_publisher.publish_pose_as_transform(
@@ -637,7 +661,9 @@ class RobotClient(Node):
                     )
                 if manip == ManipType.MANIP_MOVE_PLACE:
                     # compute place pose
-                    move_pose_robot_base_frame = self.compute_manip_pose(request.place.place_pose)
+                    move_pose_robot_base_frame = self.compute_manip_pose(
+                        request.place.place_pose
+                    )
                     if move_pose_robot_base_frame is None:
                         break
                     self.visualization_publisher.publish_pose_as_transform(
@@ -715,10 +741,14 @@ class RobotClient(Node):
                     move_pose_robot_base_frame,
                     end_effector_link=request.end_effector_link,
                     cartesian_trajectory=(
-                        request.cartesian_trajectory if request.planner_profile else True
+                        request.cartesian_trajectory
+                        if request.planner_profile
+                        else True
                     ),
                     planner_profile=(
-                        request.planner_profile if request.planner_profile else "pilz_lin"
+                        request.planner_profile
+                        if request.planner_profile
+                        else "pilz_lin"
                     ),
                     plan_only=self.plan_first,
                     planning_group=request.planning_group,
@@ -741,12 +771,19 @@ class RobotClient(Node):
                     gripper_cmd_action_name = request.gripper_cmd_action_name
                 else:
                     gripper_cmd_action_name = self.default_gripper_cmd_action_name
-                if manip == ManipType.MANIP_GRASP or manip == ManipType.MANIP_GRIPPER_CLOSE:
-                    # First, we handle gripper actions
-                    gripper_cmd = GripperCommand.Goal()
-                    gripper_cmd.command.position = 0.022
-                    self.gripper_clients[gripper_cmd_action_name].wait_for_server()
-                    self.gripper_clients[gripper_cmd_action_name].send_goal(gripper_cmd)
+                if (
+                    manip == ManipType.MANIP_GRASP
+                    or manip == ManipType.MANIP_GRIPPER_CLOSE
+                ):
+                    if gripper_cmd_action_name:
+                        # First, we handle gripper actions
+                        gripper_cmd = GripperCommand.Goal()
+                        gripper_cmd.command.position = 0.022
+                        self.gripper_clients[gripper_cmd_action_name].wait_for_server()
+                        self.gripper_clients[gripper_cmd_action_name].send_goal(
+                            gripper_cmd
+                        )
+
                     # additionally handle attach
                     if manip == ManipType.MANIP_GRASP:
                         # if success attach
@@ -766,12 +803,19 @@ class RobotClient(Node):
                             break
                         else:
                             continue
-                if manip == ManipType.MANIP_RELEASE or manip == ManipType.MANIP_GRIPPER_OPEN:
-                    # First, we handle gripper actions
-                    gripper_cmd = GripperCommand.Goal()
-                    gripper_cmd.command.position = 0.0
-                    self.gripper_clients[gripper_cmd_action_name].wait_for_server()
-                    self.gripper_clients[gripper_cmd_action_name].send_goal(gripper_cmd)
+                if (
+                    manip == ManipType.MANIP_RELEASE
+                    or manip == ManipType.MANIP_GRIPPER_OPEN
+                ):
+                    if gripper_cmd_action_name:
+                        # First, we handle gripper actions
+                        gripper_cmd = GripperCommand.Goal()
+                        gripper_cmd.command.position = 0.0
+                        self.gripper_clients[gripper_cmd_action_name].wait_for_server()
+                        self.gripper_clients[gripper_cmd_action_name].send_goal(
+                            gripper_cmd
+                        )
+
                     # Additionally handle detach
                     if manip == ManipType.MANIP_RELEASE:
                         # if success detach
