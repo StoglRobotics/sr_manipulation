@@ -5,6 +5,7 @@ sr_manipulation_interfaces/MoveWaypoint[] targets
 float64 allowed_planning_time
 # only plan, not execution
 bool only_plan
+string[] controller_names
 ---
 # final state effectively reached
 PlanExecState state

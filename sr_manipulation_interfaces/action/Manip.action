@@ -21,6 +21,7 @@ string planning_group
 bool cartesian_trajectory
 string end_effector_link
 string gripper_cmd_action_name
+string[] controller_names
 ---
 # final state effectively reached
 PlanExecState state

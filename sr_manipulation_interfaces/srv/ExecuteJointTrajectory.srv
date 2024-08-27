@@ -1,3 +1,4 @@
 trajectory_msgs/JointTrajectory joint_trajectory
+string[] controller_names
 ---
 bool success

@@ -32,7 +32,7 @@
 
 
 from copy import deepcopy
-from typing import Sequence
+from typing import List, Optional, Sequence
 
 import rclpy
 import rclpy.duration
@@ -199,11 +199,11 @@ class RobotClient(Node):
         self.allowed_touch_links = self.get_parameter("allowed_touch_links").value
         self.declare_parameter("fixed_frame", "world")
         self.fixed_frame = self.get_parameter("fixed_frame").value
-        self.declare_parameter("default_velocity_scaling_factor", 1.0)
+        self.declare_parameter("default_velocity_scaling_factor", 0.1)
         self.default_velocity_scaling_factor = self.get_parameter(
             "default_velocity_scaling_factor"
         ).value
-        self.declare_parameter("default_acceleration_scaling_factor", 1.0)
+        self.declare_parameter("default_acceleration_scaling_factor", 0.1)
         self.default_acceleration_scaling_factor = self.get_parameter(
             "default_acceleration_scaling_factor"
         ).value
@@ -228,7 +228,9 @@ class RobotClient(Node):
     ):
         self.get_logger().info("Received new joint trajectory request...")
         start: Time = self.get_clock().now()
-        success = self.moveit_client.execute_joint_trajectory(request.joint_trajectory)
+        success = self.moveit_client.execute_joint_trajectory(
+            request.joint_trajectory, request.controller_names
+        )
         exec_duration: rclpy.duration.Duration = self.get_clock().now() - start
         if success:
             self.get_logger().info("Execution succeeded in execute_joint_trajectory_cb")
@@ -265,6 +267,7 @@ class RobotClient(Node):
         velocity_scaling_factor=None,
         acceleration_scaling_factor=None,
         allowed_planning_time: float = None,
+        controller_names: Optional[List[str]] = None,
     ):
         if not velocity_scaling_factor:
             velocity_scaling_factor = self.default_velocity_scaling_factor
@@ -279,7 +282,8 @@ class RobotClient(Node):
             f"\nplanning_group={planning_group}, "
             f"\nvelocity_scaling_factor={velocity_scaling_factor}, "
             f"\nacceleration_scaling_factor={acceleration_scaling_factor}, "
-            f"\nallowed_planning_time={allowed_planning_time}"
+            f"\nallowed_planning_time={allowed_planning_time}, "
+            f"\ncontroller_names={controller_names}"
         )
         self.get_logger().info(f"Sending move request with {move_request_args_msg}")
 
@@ -308,7 +312,7 @@ class RobotClient(Node):
             return True
 
         start: Time = self.get_clock().now()
-        exec_success = self.moveit_client.execute(self.saved_plan)
+        exec_success = self.moveit_client.execute(self.saved_plan, controller_names)
         exec_duration: rclpy.duration.Duration = self.get_clock().now() - start
 
         self.saved_plan = None
@@ -411,6 +415,9 @@ class RobotClient(Node):
                 allowed_planning_time=request.allowed_planning_time,
                 plan_only=request.only_plan,
                 planning_group=target.planning_group,
+                controller_names=(
+                    request.controller_names if request.controller_names else None
+                ),
             )
             if not ret:
                 self.plan_move_to_feedback.state.plan_message = (
@@ -606,6 +613,11 @@ class RobotClient(Node):
                         ),
                         plan_only=self.plan_first,
                         planning_group=request.planning_group,
+                        controller_names=(
+                            request.controller_names
+                            if request.controller_names
+                            else None
+                        ),
                     )
                 if manip == ManipType.MANIP_REACH_PREPLACE:
                     ret = self.send_move_request(
@@ -620,6 +632,11 @@ class RobotClient(Node):
                         ),
                         plan_only=self.plan_first,
                         planning_group=request.planning_group,
+                        controller_names=(
+                            request.controller_names
+                            if request.controller_names
+                            else None
+                        ),
                     )
 
                 if not self.did_manip_plan_succeed(ret, "Reach", goal_handle):
@@ -752,6 +769,9 @@ class RobotClient(Node):
                     ),
                     plan_only=self.plan_first,
                     planning_group=request.planning_group,
+                    controller_names=(
+                        request.controller_names if request.controller_names else None
+                    ),
                 )
 
                 if not self.did_manip_plan_succeed(ret, "Move", goal_handle):
