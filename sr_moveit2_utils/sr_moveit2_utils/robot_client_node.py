@@ -264,9 +264,9 @@ class RobotClient(Node):
         plan_only: bool,
         end_effector_link: str = None,
         planning_group: str = None,
-        velocity_scaling_factor=None,
-        acceleration_scaling_factor=None,
-        allowed_planning_time: float = None,
+        velocity_scaling_factor: Optional[float] = None,
+        acceleration_scaling_factor: Optional[float] = None,
+        allowed_planning_time: Optional[float] = None,
         controller_names: Optional[List[str]] = None,
     ):
         if not velocity_scaling_factor:
@@ -618,6 +618,16 @@ class RobotClient(Node):
                             if request.controller_names
                             else None
                         ),
+                        velocity_scaling_factor=(
+                            request.velocity_scaling_factor
+                            if request.velocity_scaling_factor
+                            else None
+                        ),
+                        acceleration_scaling_factor=(
+                            request.acceleration_scaling_factor
+                            if request.acceleration_scaling_factor
+                            else None
+                        ),
                     )
                 if manip == ManipType.MANIP_REACH_PREPLACE:
                     ret = self.send_move_request(
@@ -635,6 +645,16 @@ class RobotClient(Node):
                         controller_names=(
                             request.controller_names
                             if request.controller_names
+                            else None
+                        ),
+                        velocity_scaling_factor=(
+                            request.velocity_scaling_factor
+                            if request.velocity_scaling_factor
+                            else None
+                        ),
+                        acceleration_scaling_factor=(
+                            request.acceleration_scaling_factor
+                            if request.acceleration_scaling_factor
                             else None
                         ),
                     )
@@ -771,6 +791,16 @@ class RobotClient(Node):
                     planning_group=request.planning_group,
                     controller_names=(
                         request.controller_names if request.controller_names else None
+                    ),
+                    velocity_scaling_factor=(
+                        request.velocity_scaling_factor
+                        if request.velocity_scaling_factor
+                        else None
+                    ),
+                    acceleration_scaling_factor=(
+                        request.acceleration_scaling_factor
+                        if request.acceleration_scaling_factor
+                        else None
                     ),
                 )
 

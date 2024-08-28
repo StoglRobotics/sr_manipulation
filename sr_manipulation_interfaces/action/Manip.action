@@ -22,6 +22,8 @@ bool cartesian_trajectory
 string end_effector_link
 string gripper_cmd_action_name
 string[] controller_names
+float64 velocity_scaling_factor
+float64 acceleration_scaling_factor
 ---
 # final state effectively reached
 PlanExecState state
