@@ -6,6 +6,7 @@ float64 allowed_planning_time
 # only plan, not execution
 bool only_plan
 string[] controller_names
+bool preempt_ok
 ---
 # final state effectively reached
 PlanExecState state

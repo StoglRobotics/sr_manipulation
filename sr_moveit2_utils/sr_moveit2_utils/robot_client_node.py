@@ -268,6 +268,7 @@ class RobotClient(Node):
         acceleration_scaling_factor: Optional[float] = None,
         allowed_planning_time: Optional[float] = None,
         controller_names: Optional[List[str]] = None,
+        preempt_ok: bool = False,
     ):
         if not velocity_scaling_factor:
             velocity_scaling_factor = self.default_velocity_scaling_factor
@@ -283,7 +284,8 @@ class RobotClient(Node):
             f"\nvelocity_scaling_factor={velocity_scaling_factor}, "
             f"\nacceleration_scaling_factor={acceleration_scaling_factor}, "
             f"\nallowed_planning_time={allowed_planning_time}, "
-            f"\ncontroller_names={controller_names}"
+            f"\ncontroller_names={controller_names}, "
+            f"\npreempt_ok={preempt_ok}"
         )
         self.get_logger().info(f"Sending move request with {move_request_args_msg}")
 
@@ -312,7 +314,11 @@ class RobotClient(Node):
             return True
 
         start: Time = self.get_clock().now()
-        exec_success = self.moveit_client.execute(self.saved_plan, controller_names)
+        exec_success = self.moveit_client.execute(
+            plan=self.saved_plan,
+            controller_names=controller_names,
+            preempt_ok=preempt_ok,
+        )
         exec_duration: rclpy.duration.Duration = self.get_clock().now() - start
 
         self.saved_plan = None
@@ -418,6 +424,7 @@ class RobotClient(Node):
                 controller_names=(
                     request.controller_names if request.controller_names else None
                 ),
+                preempt_ok=(request.preempt_ok if request.preempt_ok else False),
             )
             if not ret:
                 self.plan_move_to_feedback.state.plan_message = (
@@ -628,6 +635,9 @@ class RobotClient(Node):
                             if request.acceleration_scaling_factor
                             else None
                         ),
+                        preempt_ok=(
+                            request.preempt_ok if request.preempt_ok else False
+                        ),
                     )
                 if manip == ManipType.MANIP_REACH_PREPLACE:
                     ret = self.send_move_request(
@@ -656,6 +666,9 @@ class RobotClient(Node):
                             request.acceleration_scaling_factor
                             if request.acceleration_scaling_factor
                             else None
+                        ),
+                        preempt_ok=(
+                            request.preempt_ok if request.preempt_ok else False
                         ),
                     )
 
@@ -802,6 +815,7 @@ class RobotClient(Node):
                         if request.acceleration_scaling_factor
                         else None
                     ),
+                    preempt_ok=(request.preempt_ok if request.preempt_ok else False),
                 )
 
                 if not self.did_manip_plan_succeed(ret, "Move", goal_handle):

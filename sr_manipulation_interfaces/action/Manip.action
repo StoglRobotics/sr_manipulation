@@ -24,6 +24,7 @@ string gripper_cmd_action_name
 string[] controller_names
 float64 velocity_scaling_factor
 float64 acceleration_scaling_factor
+bool preempt_ok
 ---
 # final state effectively reached
 PlanExecState state

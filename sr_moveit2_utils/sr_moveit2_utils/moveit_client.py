@@ -382,7 +382,10 @@ class MoveitClient:
             return False
 
     def execute(
-        self, plan: RobotTrajectory, controller_names: Optional[List[str]] = None
+        self,
+        plan: RobotTrajectory,
+        controller_names: Optional[List[str]] = None,
+        preempt_ok: bool = False,
     ) -> bool:
         self.node.get_logger().info("Executing planned trajectory")
         self._execute_trajectory_client.wait_for_server()
@@ -396,6 +399,11 @@ class MoveitClient:
         exec_result: ExecuteTrajectory.Result = (
             self._execute_trajectory_client.send_goal(goal).result
         )
+
+        if preempt_ok and exec_result.error_code.val == MoveItErrorCodes.PREEMPTED:
+            self.node.get_logger().info("Trajectory execution preempted (as expected).")
+            return True
+
         if exec_result.error_code.val == MoveItErrorCodes.SUCCESS:
             self.node.get_logger().info("Trajectory execution succeeded.")
             return True
