@@ -121,15 +121,13 @@ class RobotClient(Node):
         self.get_logger().info("Init GripperClient ...")
         # Gripper handler
         self.gripper_client = GripperClient(
-            tf_prefix=self.tf_prefix,
-            tcp_link_name=self.chain_tip_link,
+            # tf_prefix=self.tf_prefix,
+            # tcp_link_name=self.chain_tip_link,
             driver_ns=self.gripper_driver_ns,
             sim=sim,
-            move_client=self.move_client,
+            # move_client=self.move_client,
         )
         # self.gripper_client = GripperClient(node=self, sim=self.sim, move_client=self.move_client, svc_cbg=self.service_callback_group, sub_cbg=self.subpub_callback_group)
-
-        self.init_gripper()
         self.get_logger().info("Init action servers ...")
 
         # action servers
@@ -165,13 +163,6 @@ class RobotClient(Node):
         #
         # self.jtc_cmd_publisher = self.create_publisher(JointTrajectory, "/position_trajectory_controller/joint_trajectory", 1)
         # self.jtc_state_subscriber = self.create_subscription(JointTrajectoryControllerState, "/position_trajectory_controller/state", self._jtc_state_callback, 1)
-
-    def init_gripper(self):
-        # initialize Gripper
-        response = self.gripper_client.send_close_brake_request()
-        if not response.success:
-            self.get_logger().fatal("CR Brake is not set correctly")
-            exit(-1)
 
     def plan_move_to_goal_cb(self, goal: PlanMoveTo.Goal):
         self.get_logger().debug("Received new PlanMoveTo goal...")
