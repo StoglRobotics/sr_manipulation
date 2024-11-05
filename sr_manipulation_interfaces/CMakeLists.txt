@@ -35,6 +35,7 @@ set(action_files
 
 set(srv_files
   srv/AddObjects.srv
+  srv/PublishPoseAsTF.srv
   srv/RemoveObjects.srv
   srv/GetObjectPose.srv
   srv/AttachObject.srv
