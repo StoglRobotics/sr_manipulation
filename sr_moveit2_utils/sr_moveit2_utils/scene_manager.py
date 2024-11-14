@@ -66,6 +66,8 @@
 
 
 from copy import deepcopy
+import time
+from typing import List
 
 from rclpy.node import Node
 from rclpy.time import Duration
@@ -78,13 +80,14 @@ from sr_manipulation_interfaces.srv import (
     DetachObject,
     GetObjectPose,
 )
-from sr_manipulation_interfaces.msg import ObjectDescriptor, ServiceResult
+from sr_manipulation_interfaces.msg import ObjectDescriptor, ServiceResult, VisTransform
 from moveit_msgs.msg import (
     PlanningScene,
     CollisionObject,
     AttachedCollisionObject,
 )
 from moveit_msgs.srv import ApplyPlanningScene
+from sr_ros2_python_utils.visualization_publishers import VisualizatonPublisher
 from visualization_msgs.msg import MarkerArray, Marker
 from geometry_msgs.msg import PoseStamped, Point
 from shape_msgs.msg import SolidPrimitive, Mesh, MeshTriangle
@@ -124,6 +127,8 @@ class SceneManager(Node):
                     "Pyassimp version '4.1.4' has a bug - please install a newer version, e.g., using 'pip3 install -U pyassimp'!"
                 )
                 return None
+
+        self.visualization_publisher = VisualizatonPublisher(self)
 
         # storage to track the objects
         self.object_in_the_scene_storage = {}  # dict[str, CollisionObject]
@@ -470,14 +475,12 @@ class SceneManager(Node):
             self.object_in_the_scene_storage[object_id] = object_to_attach
         return ret
 
-    def apply_planning_scene(self, planning_scene: PlanningScene):
+    def apply_planning_scene(self, planning_scene: PlanningScene) -> bool:
         ps_req = ApplyPlanningScene.Request()
         ps_req.scene = planning_scene
         # the call can be synchronous as it  lives in its own cbg
-        response = self.planning_scene_diff_cli.call(ps_req)
-        if not response.success:
-            return False
-        return True
+        response: ApplyPlanningScene.Response = self.planning_scene_diff_cli.call(ps_req)
+        return response.success
 
     def add_objects_cb(
         self, request: AddObjects.Request, response: AddObjects.Response
@@ -495,15 +498,33 @@ class SceneManager(Node):
         else:
             response.result.state = ServiceResult.FAILED
             response.result.message = "No objects added"
-        self.get_logger().info("Sending response")
+        self.get_logger().info(
+            f"Sending response, state={response.result.state}, "
+            f"message={response.result.message}, added_object_ids={response.added_object_ids}"
+        )
         return response
 
-    def add_objects(self, objects: ObjectDescriptor, as_markers=False) -> list[int]:
+    def add_objects(self, objects: List[ObjectDescriptor], as_markers: bool = False) -> list[str]:
         objects_to_add = []
         added_object_ids = []
         object_mesh_paths = []  # needed for markers to get the full resource
 
         for obj in objects:
+            # first publish transforms
+            transforms: List[VisTransform] = obj.transforms
+            for transform in transforms:
+                while not self.visualization_publisher.publish_pose_as_transform(
+                    pose=transform.pose,
+                    frame_id=transform.frame_id,
+                    child_frame_id=transform.child_frame_id,
+                    is_static=transform.is_static,
+                ):
+                    self.get_logger().error(
+                        f"Failed to publish static transform from '{transform.frame_id}' "
+                        f"to '{transform.child_frame_id}', trying again..."
+                    )
+                    time.sleep(0.5)
+
             object_to_add = self.collision_from_object_descriptor(obj)
 
             object_to_add.operation = CollisionObject.ADD
@@ -522,8 +543,9 @@ class SceneManager(Node):
         if as_markers:
             self.publish_as_marker(objects_to_add, object_mesh_paths)
         else:
-            self.publish_planning_scene(objects_to_add)
-            # TODO(gwalck) check if objects were added
+            while not self.publish_planning_scene(objects_to_add):
+                self.get_logger().error("Failed to add objects to the scene, trying again...")
+                time.sleep(0.5)
         return added_object_ids
 
     def remove_objects_cb(
@@ -544,7 +566,7 @@ class SceneManager(Node):
 
         return response
 
-    def remove_objects(self, object_ids: list[str]) -> list[int]:
+    def remove_objects(self, object_ids: list[str]) -> list[str]:
         marker_objects_to_remove = []
         scene_objects_to_remove = []
         removed_maker_object_ids = []
@@ -567,16 +589,20 @@ class SceneManager(Node):
             self.publish_as_marker(marker_objects_to_remove)
             # TODO(gwalck) check if objects were removed
         if len(removed_scene_object_ids):
-            self.publish_planning_scene(scene_objects_to_remove)
+            if self.publish_planning_scene(scene_objects_to_remove):
+                self.get_logger().info("Objects removed from the scene")
+            else:
+                self.get_logger().error("Failed to remove objects from the scene")
+                removed_scene_object_ids = []
             # TODO(gwalck) check if objects were removed
         removed_object_ids = removed_maker_object_ids + removed_scene_object_ids
         return removed_object_ids
 
-    def publish_planning_scene(self, objects: list[CollisionObject]) -> None:
+    def publish_planning_scene(self, objects: list[CollisionObject]) -> bool:
         planning_scene = PlanningScene()
         planning_scene.world.collision_objects = objects
         planning_scene.is_diff = True
-        self.apply_planning_scene(planning_scene)
+        return self.apply_planning_scene(planning_scene)
         # do not use the publisher, for some reason if a new frame is required that is already there, it won't find it
         # self.planning_scene_diff_publisher.publish(planning_scene)
 

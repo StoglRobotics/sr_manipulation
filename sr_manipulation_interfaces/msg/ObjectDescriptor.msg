@@ -5,3 +5,4 @@ string[] paths_to_mesh
 geometry_msgs/Vector3 bbox_size
 # relative pose of mesh/primitive
 geometry_msgs/Pose shape_pose
+VisTransform[] transforms

@@ -26,6 +26,7 @@ set(msg_files
   msg/PlanExecState.msg
   msg/ManipType.msg
   msg/MoveWaypoint.msg
+  msg/VisTransform.msg
 )
 
 set(action_files
