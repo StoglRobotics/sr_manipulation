@@ -69,6 +69,7 @@ from copy import deepcopy
 import time
 from typing import List
 
+import rclpy
 from rclpy.node import Node
 from rclpy.time import Duration
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
@@ -85,8 +86,10 @@ from moveit_msgs.msg import (
     PlanningScene,
     CollisionObject,
     AttachedCollisionObject,
+    AllowedCollisionMatrix,
+    AllowedCollisionEntry,
 )
-from moveit_msgs.srv import ApplyPlanningScene
+from moveit_msgs.srv import ApplyPlanningScene, GetPlanningScene
 from sr_ros2_python_utils.visualization_publishers import VisualizatonPublisher
 from visualization_msgs.msg import MarkerArray, Marker
 from geometry_msgs.msg import PoseStamped, Point
@@ -197,6 +200,10 @@ class SceneManager(Node):
         )
         # self.collision_object_publisher = self.create_publisher(CollisionObject, "collision_object", 1)
 
+        self.get_planning_scene_cli = self.create_client(
+            GetPlanningScene, "/get_planning_scene", callback_group=self.outgoing_callback_group
+        )
+
         # create service clients to MoveIt2
         self.planning_scene_diff_cli = self.create_client(
             ApplyPlanningScene,
@@ -206,7 +213,74 @@ class SceneManager(Node):
         while not self.planning_scene_diff_cli.wait_for_service(timeout_sec=10.0):
             self.get_logger().info("apply_planning_scene service not available, waiting again...")
 
+        self.get_logger().info(
+            f"Scene Manager node name={self.get_name()}, namespace={self.get_namespace()}"
+        )
+
+        try:
+            self.allowed_touch_links = self.declare_parameter(
+                "allowed_touch_links", rclpy.Parameter.Type.STRING_ARRAY
+            ).value
+        except Exception as e:
+            self.get_logger().error(f"Failed to get allowed touch links: {e}")
+            self.allowed_touch_links = []
+
+        self.get_logger().info(f"Allowed touch links: {self.allowed_touch_links}")
+
+        # single shot timer to publish allowed touch links
+        self.timer_callback_group = MutuallyExclusiveCallbackGroup()
+        self.timer = self.create_timer(
+            timer_period_sec=5.0,
+            callback=self.publish_allowed_touch_links,
+            callback_group=self.timer_callback_group,
+        )
+
         self.get_logger().info("Scene Manager initialized")
+
+    def publish_allowed_touch_links(self):
+        self.get_logger().info("Publishing allowed touch links")
+
+        # cancel the timer
+        self.timer.cancel()
+
+        # first get the current planning scene
+        self.get_logger().info("Getting current planning scene")
+        req = GetPlanningScene.Request()
+        get_scene_future = self.get_planning_scene_cli.call_async(req)
+        rclpy.spin_until_future_complete(self, get_scene_future, timeout_sec=5.0)
+        if not get_scene_future.result():
+            self.get_logger().error("Failed to get planning scene")
+            return
+        self.get_logger().info("Got planning scene")
+
+        current_scene: PlanningScene = deepcopy(get_scene_future.result().scene)
+        acm = current_scene.allowed_collision_matrix
+
+        for link in self.allowed_touch_links:
+            if link not in acm.entry_names:
+                acm.entry_names.append(link)
+                entry = AllowedCollisionEntry()
+                entry.enabled = [True] * len(self.allowed_touch_links)
+                acm.entry_values.append(entry)
+
+        # Ensure matrix dimensions match
+        for entry in acm.entry_values:
+            while len(entry.enabled) < len(acm.entry_names):
+                entry.enabled.append(True)
+            while len(entry.enabled) > len(acm.entry_names):
+                entry.enabled.pop()
+
+        current_scene.allowed_collision_matrix = acm
+        current_scene.is_diff = True
+
+        self.get_logger().info("Publishing allowed touch links")
+        if self.apply_planning_scene(current_scene):
+            self.get_logger().info("Allowed touch links published")
+        else:
+            self.get_logger().error("Failed to publish allowed touch links")
+
+        # disable timer
+        self.timer.cancel()
 
     def planning_scene_cb(self, msg: PlanningScene):
         collision_objects: list[CollisionObject] = msg.world.collision_objects

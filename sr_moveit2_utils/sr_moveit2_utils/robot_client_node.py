@@ -187,26 +187,32 @@ class RobotClient(Node):
         self.detach_object_cli = self.create_client(
             DetachObject, "/detach_object", callback_group=self.service_callback_group
         )
-        self.declare_parameter("tf_prefix", "")
-        self.tf_prefix = self.get_parameter("tf_prefix").value
-        self.declare_parameter("chain_base_link", "base_link")
-        self.chain_base_link = self.get_parameter("chain_base_link").value
-        self.declare_parameter("chain_tip_link", "tcp_link")
-        self.chain_tip_link = self.get_parameter("chain_tip_link").value
-        self.declare_parameter("tool_link", "gripper_link")
-        self.tool_link = self.get_parameter("tool_link").value
-        self.declare_parameter("allowed_touch_links", ["tcp_link", "gripper_base"])
-        self.allowed_touch_links = self.get_parameter("allowed_touch_links").value
-        self.declare_parameter("fixed_frame", "world")
-        self.fixed_frame = self.get_parameter("fixed_frame").value
-        self.declare_parameter("default_velocity_scaling_factor", 0.1)
-        self.default_velocity_scaling_factor = self.get_parameter(
-            "default_velocity_scaling_factor"
+        self.tf_prefix = self.declare_parameter("tf_prefix", "").value
+        self.chain_base_link = self.declare_parameter("chain_base_link", "base_link").value
+        self.chain_tip_link = self.declare_parameter("chain_tip_link", "tcp_link").value
+        self.tool_link = self.declare_parameter("tool_link", "gripper_link").value
+        self.allowed_touch_links = self.declare_parameter(
+            "allowed_touch_links", ["tcp_link", "gripper_base"]
         ).value
-        self.declare_parameter("default_acceleration_scaling_factor", 0.1)
-        self.default_acceleration_scaling_factor = self.get_parameter(
-            "default_acceleration_scaling_factor"
+        self.fixed_frame = self.declare_parameter("fixed_frame", "world").value
+        self.default_velocity_scaling_factor = self.declare_parameter(
+            "default_velocity_scaling_factor", 0.1
         ).value
+        self.default_acceleration_scaling_factor = self.declare_parameter(
+            "default_acceleration_scaling_factor", 0.1
+        ).value
+
+        self.get_logger().info(
+            "Loaded params:\n"
+            f"- tf_prefix: {self.tf_prefix}\n"
+            f"- chain_base_link: {self.chain_base_link}\n"
+            f"- chain_tip_link: {self.chain_tip_link}\n"
+            f"- tool_link: {self.tool_link}\n"
+            f"- allowed_touch_links: {self.allowed_touch_links}\n"
+            f"- fixed_frame: {self.fixed_frame}\n"
+            f"- default_velocity_scaling_factor: {self.default_velocity_scaling_factor}\n"
+            f"- default_acceleration_scaling_factor: {self.default_acceleration_scaling_factor}"
+        )
 
         self.moveit_client = MoveitClient(
             node=self,
