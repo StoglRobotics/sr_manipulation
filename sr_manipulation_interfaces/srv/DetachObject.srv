@@ -1,5 +1,6 @@
 # Request
 string id
+string detach_to_link
 ---
 # Response
 ServiceResult result
