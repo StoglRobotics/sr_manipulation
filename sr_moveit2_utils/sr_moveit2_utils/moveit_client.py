@@ -85,12 +85,7 @@ class MoveitClient:
         )
 
         self.valid_constraints = (
-            len(
-                self.node.get_parameter(
-                    "constraints.orientation.absolute_tolerance"
-                ).value
-            )
-            == 3
+            len(self.node.get_parameter("constraints.orientation.absolute_tolerance").value) == 3
         )
         self.default_allowed_planning_time = self.declare_and_get_param(
             "default_allowed_planning_time", rclpy.Parameter.Type.DOUBLE
@@ -163,9 +158,7 @@ class MoveitClient:
             "default_profile_name", rclpy.Parameter.Type.STRING
         )
         if default_profile_name not in self.planner_profiles_map:
-            self.node.set_parameters(
-                [rclpy.Parameter("default_profile_name", "default")]
-            )
+            self.node.set_parameters([rclpy.Parameter("default_profile_name", "default")])
 
         self.service_callback_group = MutuallyExclusiveCallbackGroup()
         self._get_cartesian_path_srv_cli = self.node.create_client(
@@ -212,60 +205,40 @@ class MoveitClient:
             "constraints.orientation.absolute_tolerance",
             rclpy.Parameter.Type.DOUBLE_ARRAY,
         )
-        self.node.declare_parameter(
-            "constraints.orientation.weight", rclpy.Parameter.Type.DOUBLE
-        )
-        self.node.declare_parameter(
-            "constraints.box.frame_id", rclpy.Parameter.Type.STRING
-        )
-        self.node.declare_parameter(
-            "constraints.box.link_name", rclpy.Parameter.Type.STRING
-        )
+        self.node.declare_parameter("constraints.orientation.weight", rclpy.Parameter.Type.DOUBLE)
+        self.node.declare_parameter("constraints.box.frame_id", rclpy.Parameter.Type.STRING)
+        self.node.declare_parameter("constraints.box.link_name", rclpy.Parameter.Type.STRING)
         self.node.declare_parameter(
             "constraints.box.dimensions", rclpy.Parameter.Type.DOUBLE_ARRAY
         )
-        self.node.declare_parameter(
-            "constraints.box.position", rclpy.Parameter.Type.DOUBLE_ARRAY
-        )
+        self.node.declare_parameter("constraints.box.position", rclpy.Parameter.Type.DOUBLE_ARRAY)
         self.node.declare_parameter(
             "constraints.box.orientation", rclpy.Parameter.Type.DOUBLE_ARRAY
         )
-        self.node.declare_parameter(
-            "constraints.box.weight", rclpy.Parameter.Type.DOUBLE
-        )
+        self.node.declare_parameter("constraints.box.weight", rclpy.Parameter.Type.DOUBLE)
 
     def initialize_path_constraints(self):
-        orientation_weight = self.node.get_parameter(
-            "constraints.orientation.weight"
-        ).value
+        orientation_weight = self.node.get_parameter("constraints.orientation.weight").value
         constraints = Constraints()
         constraints.name = "use_equality_constraints"
         if orientation_weight > 1e-3:
             orientation_constraint = OrientationConstraint()
-            ori_frame_id = self.node.get_parameter(
-                "constraints.orientation.frame_id"
-            ).value
+            ori_frame_id = self.node.get_parameter("constraints.orientation.frame_id").value
             if ori_frame_id:
                 orientation_constraint.header.frame_id = ori_frame_id
             else:
                 orientation_constraint.header.frame_id = self.pose_reference_frame
-            ori_link_name = self.node.get_parameter(
-                "constraints.orientation.link_name"
-            ).value
+            ori_link_name = self.node.get_parameter("constraints.orientation.link_name").value
             if ori_link_name:
                 orientation_constraint.link_name = ori_link_name
             # else:
             #     orientation_constraint.link_name = self.end_effector_link
-            orientation = self.node.get_parameter(
-                "constraints.orientation.orientation"
-            ).value
+            orientation = self.node.get_parameter("constraints.orientation.orientation").value
             orientation_constraint.orientation.x = orientation[0]
             orientation_constraint.orientation.y = orientation[1]
             orientation_constraint.orientation.z = orientation[2]
             orientation_constraint.orientation.w = orientation[3]
-            tolerance = self.node.get_parameter(
-                "constraints.orientation.absolute_tolerance"
-            ).value
+            tolerance = self.node.get_parameter("constraints.orientation.absolute_tolerance").value
             orientation_constraint.absolute_x_axis_tolerance = tolerance[0]
             orientation_constraint.absolute_y_axis_tolerance = tolerance[1]
             orientation_constraint.absolute_z_axis_tolerance = tolerance[2]
@@ -300,9 +273,7 @@ class MoveitClient:
             box_pose.position.x = box_position[0]
             box_pose.position.y = box_position[1]
             box_pose.position.z = box_position[2]
-            box_orientation = self.node.get_parameter(
-                "constraints.box.orientation"
-            ).value
+            box_orientation = self.node.get_parameter("constraints.box.orientation").value
             box_pose.orientation.x = box_orientation[0]
             box_pose.orientation.y = box_orientation[1]
             box_pose.orientation.z = box_orientation[2]
@@ -364,14 +335,14 @@ class MoveitClient:
         self._execute_trajectory_client.wait_for_server()
         goal = ExecuteTrajectory.Goal()
         goal.trajectory.joint_trajectory = joint_trajectory
-        if controller_names:
-            goal.controller_names = controller_names
-        self.node.get_logger().info(
-            f"Sending goal to execute trajectory with controller names: {goal.controller_names}"
-        )
-        exec_result: ExecuteTrajectory.Result = (
-            self._execute_trajectory_client.send_goal(goal).result
-        )
+        # if controller_names:
+        #     goal.controller_names = controller_names
+        # self.node.get_logger().info(
+        #     f"Sending goal to execute trajectory with controller names: {goal.controller_names}"
+        # )
+        exec_result: ExecuteTrajectory.Result = self._execute_trajectory_client.send_goal(
+            goal
+        ).result
         if exec_result.error_code.val == MoveItErrorCodes.SUCCESS:
             self.node.get_logger().info("Joint trajectory execution succeeded.")
             return True
@@ -391,14 +362,14 @@ class MoveitClient:
         self._execute_trajectory_client.wait_for_server()
         goal = ExecuteTrajectory.Goal()
         goal.trajectory = plan
-        if controller_names:
-            goal.controller_names = controller_names
-        self.node.get_logger().info(
-            f"Sending goal to execute trajectory with controller names: {goal.controller_names}"
-        )
-        exec_result: ExecuteTrajectory.Result = (
-            self._execute_trajectory_client.send_goal(goal).result
-        )
+        # if controller_names:
+        #     goal.controller_names = controller_names
+        # self.node.get_logger().info(
+        #     f"Sending goal to execute trajectory with controller names: {goal.controller_names}"
+        # )
+        exec_result: ExecuteTrajectory.Result = self._execute_trajectory_client.send_goal(
+            goal
+        ).result
 
         if preempt_ok and exec_result.error_code.val == MoveItErrorCodes.PREEMPTED:
             self.node.get_logger().info("Trajectory execution preempted (as expected).")
@@ -499,22 +470,16 @@ class MoveitClient:
 
             constraints = self.initialize_goal_constraints(pose, end_effector_link)
             if not constraints:
-                self.node.get_logger().error(
-                    error_msg.format(error_code="Invalid constraints")
-                )
+                self.node.get_logger().error(error_msg.format(error_code="Invalid constraints"))
                 return None
             goal.request.goal_constraints.append(constraints)
 
-            action_result: MoveGroup.Result = self._move_group_client.send_goal(
-                goal
-            ).result
+            action_result: MoveGroup.Result = self._move_group_client.send_goal(goal).result
             if action_result.error_code.val == MoveItErrorCodes.SUCCESS:
                 self.node.get_logger().info("Non-cartesian path planning succeeded.")
                 return action_result.planned_trajectory
             else:
-                self.node.get_logger().error(
-                    error_msg.format(error_code=action_result.error_code)
-                )
+                self.node.get_logger().error(error_msg.format(error_code=action_result.error_code))
                 return None
         else:
             self.node.get_logger().info("Using cartesian path planning.")
@@ -538,16 +503,14 @@ class MoveitClient:
                     get_cart_path_req.link_name = self.end_effector_link
 
                 # sync call
-                response: GetCartesianPath.Response = (
-                    self._get_cartesian_path_srv_cli.call(get_cart_path_req)
+                response: GetCartesianPath.Response = self._get_cartesian_path_srv_cli.call(
+                    get_cart_path_req
                 )
                 if response.error_code.val == MoveItErrorCodes.SUCCESS:
                     self.node.get_logger().info("Cartesian path planning succeeded.")
                     return response.solution
                 else:
-                    self.node.get_logger().error(
-                        error_msg.format(error_code=response.error_code)
-                    )
+                    self.node.get_logger().error(error_msg.format(error_code=response.error_code))
                     return None
             else:
                 constraints = self.initialize_goal_constraints(pose, end_effector_link)
@@ -558,9 +521,7 @@ class MoveitClient:
                     return None
                 goal.request.goal_constraints.append(constraints)
 
-                action_result: MoveGroup.Result = self._move_group_client.send_goal(
-                    goal
-                ).result
+                action_result: MoveGroup.Result = self._move_group_client.send_goal(goal).result
                 if action_result.error_code.val == MoveItErrorCodes.SUCCESS:
                     self.node.get_logger().info("Cartesian path planning succeeded.")
                     return action_result.planned_trajectory
