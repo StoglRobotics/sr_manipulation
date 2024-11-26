@@ -1,0 +1,6 @@
+TouchLinks[] enable_touch_links  # list of links between collision should be enabled
+TouchLinks[] disable_touch_links # list of links between collision should be disabled
+---
+TouchLinks[] failed_enable_touch_links  # list of links between enable of collision failed
+TouchLinks[] failed_disable_touch_links # list of links between disable of collision failed
+bool success

@@ -26,6 +26,7 @@ set(msg_files
   msg/PlanExecState.msg
   msg/ManipType.msg
   msg/MoveWaypoint.msg
+  msg/TouchLinks.msg
   msg/VisTransform.msg
 )
 
@@ -36,6 +37,7 @@ set(action_files
 
 set(srv_files
   srv/AddObjects.srv
+  srv/ApplyTouchLinks.srv
   srv/PublishPoseAsTF.srv
   srv/RemoveObjects.srv
   srv/GetObjectPose.srv
