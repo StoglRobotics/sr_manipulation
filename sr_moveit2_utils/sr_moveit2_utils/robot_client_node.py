@@ -55,7 +55,7 @@ from sr_manipulation_interfaces.srv import (
     ExecuteJointTrajectory,
 )
 
-from control_msgs.action import GripperCommand
+from control_msgs.action import GripperCommand, ParallelGripperCommand
 from trajectory_msgs.msg import JointTrajectory
 from geometry_msgs.msg import PoseStamped, Vector3Stamped, Pose
 from sr_moveit2_utils.moveit_client import MoveitClient
@@ -155,7 +155,7 @@ class RobotClient(Node):
             execute_callback=self.manip_execute_cb,
             callback_group=self.action_callback_group,
         )
-
+        # TODO (anyone) please remove this!
         gripper_cmd_action_names = self.declare_parameter(
             "gripper_cmd_action_names", rclpy.Parameter.Type.STRING_ARRAY
         ).value
@@ -166,18 +166,7 @@ class RobotClient(Node):
         self.default_gripper_cmd_action_name = None
         if gripper_cmd_action_names:
             self.default_gripper_cmd_action_name = gripper_cmd_action_names[0]
-
-        # Gripper ActionClients
-        self.action_client_callback_group = MutuallyExclusiveCallbackGroup()
-        self.gripper_clients = {
-            gripper_cmd_action_name: ActionClient(
-                self,
-                GripperCommand,
-                gripper_cmd_action_name,
-                callback_group=self.action_client_callback_group,
-            )
-            for gripper_cmd_action_name in gripper_cmd_action_names
-        }
+      
 
         self.saved_plan = None
 
@@ -202,6 +191,10 @@ class RobotClient(Node):
             "default_acceleration_scaling_factor", 0.1
         ).value
 
+        self.use_parallel_gripper = self.declare_parameter(
+            "use_parallel_gripper", True
+        ).value
+
         self.get_logger().info(
             "Loaded params:\n"
             f"- tf_prefix: {self.tf_prefix}\n"
@@ -211,8 +204,32 @@ class RobotClient(Node):
             f"- allowed_touch_links: {self.allowed_touch_links}\n"
             f"- fixed_frame: {self.fixed_frame}\n"
             f"- default_velocity_scaling_factor: {self.default_velocity_scaling_factor}\n"
-            f"- default_acceleration_scaling_factor: {self.default_acceleration_scaling_factor}"
+            f"- default_acceleration_scaling_factor: {self.default_acceleration_scaling_factor}\n"
+            f"- use_parallel_gripper: {self.use_parallel_gripper}"
         )
+
+                # Gripper ActionClients
+        self.action_client_callback_group = MutuallyExclusiveCallbackGroup()
+        if self.use_parallel_gripper: 
+            self.gripper_clients = {
+                gripper_cmd_action_name: ActionClient(
+                    self,
+                    ParallelGripperCommand,
+                    gripper_cmd_action_name,
+                    callback_group=self.action_client_callback_group,
+                )
+                for gripper_cmd_action_name in gripper_cmd_action_names
+            }
+        else:
+            self.gripper_clients = {
+                gripper_cmd_action_name: ActionClient(
+                    self,
+                    GripperCommand,
+                    gripper_cmd_action_name,
+                    callback_group=self.action_client_callback_group,
+                )
+                for gripper_cmd_action_name in gripper_cmd_action_names
+            }
 
         self.moveit_client = MoveitClient(
             node=self,
@@ -814,11 +831,18 @@ class RobotClient(Node):
                     gripper_cmd_action_name = self.default_gripper_cmd_action_name
                 if manip == ManipType.MANIP_GRASP or manip == ManipType.MANIP_GRIPPER_CLOSE:
                     if gripper_cmd_action_name:
-                        # First, we handle gripper actions
-                        gripper_cmd = GripperCommand.Goal()
-                        gripper_cmd.command.position = 0.022
-                        self.gripper_clients[gripper_cmd_action_name].wait_for_server()
-                        self.gripper_clients[gripper_cmd_action_name].send_goal(gripper_cmd)
+                        if self.use_parallel_gripper:
+                            # First, we handle gripper actions
+                            gripper_cmd = ParallelGripperCommand.Goal()
+                            gripper_cmd.command.position = [ 0.05 ]
+                            self.gripper_clients[gripper_cmd_action_name].wait_for_server()
+                            self.gripper_clients[gripper_cmd_action_name].send_goal(gripper_cmd)
+                        else:
+                            # First, we handle gripper actions
+                            gripper_cmd = GripperCommand.Goal()
+                            gripper_cmd.command.position = 0.05
+                            self.gripper_clients[gripper_cmd_action_name].wait_for_server()
+                            self.gripper_clients[gripper_cmd_action_name].send_goal(gripper_cmd)
 
                     # additionally handle attach
                     if manip == ManipType.MANIP_GRASP:
@@ -841,9 +865,16 @@ class RobotClient(Node):
                             continue
                 if manip == ManipType.MANIP_RELEASE or manip == ManipType.MANIP_GRIPPER_OPEN:
                     if gripper_cmd_action_name:
-                        # First, we handle gripper actions
-                        gripper_cmd = GripperCommand.Goal()
-                        gripper_cmd.command.position = 0.0
+                        if self.use_parallel_gripper:
+                            # First, we handle gripper actions
+                            gripper_cmd = ParallelGripperCommand.Goal()
+                            gripper_cmd.command.position = [ 0.02 ]
+                            self.gripper_clients[gripper_cmd_action_name].wait_for_server()
+                            self.gripper_clients[gripper_cmd_action_name].send_goal(gripper_cmd)
+                        else:
+                            # First, we handle gripper actions
+                            gripper_cmd = GripperCommand.Goal()
+                            gripper_cmd.command.position = 0.02
                         self.gripper_clients[gripper_cmd_action_name].wait_for_server()
                         self.gripper_clients[gripper_cmd_action_name].send_goal(gripper_cmd)
 
