@@ -851,7 +851,7 @@ class RobotClient(Node):
                             ret = self.attach(
                                 request.object_id,
                                 request.end_effector_link,
-                                self.allowed_touch_links,
+                                list(set(self.allowed_touch_links + request.pick.allowed_touch_objects)),
                             )
                         else:
                             continue
