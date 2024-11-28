@@ -45,11 +45,13 @@ from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
 from sr_manipulation_interfaces.action import PlanMoveTo, Manip
 from sr_manipulation_interfaces.msg import (
     ManipType,
+    MoveWaypoint,
     PlanExecState,
     ServiceResult,
-    MoveWaypoint,
+    TouchLinks,
 )
 from sr_manipulation_interfaces.srv import (
+    ApplyTouchLinks,
     AttachObject,
     DetachObject,
     ExecuteJointTrajectory,
@@ -175,6 +177,9 @@ class RobotClient(Node):
         )
         self.detach_object_cli = self.create_client(
             DetachObject, "/detach_object", callback_group=self.service_callback_group
+        )
+        self.apply_touch_links_cli = self.create_client(
+            ApplyTouchLinks, "/apply_touch_links", callback_group=self.service_callback_group
         )
         self.tf_prefix = self.declare_parameter("tf_prefix", "").value
         self.chain_base_link = self.declare_parameter("chain_base_link", "base_link").value
@@ -709,6 +714,13 @@ class RobotClient(Node):
                         "grasp_pose_base_link",
                         is_static=True,
                     )
+                    # Add objects to ignore collision when grasping
+                    # FIXME(destogl): probably not needed it should be already set!
+                    # enable_touch_links = TouchLinks()
+                    # enable_touch_links.frame_id = request.object_id
+                    # enable_touch_links.touch_links = list(request.pick.grasp_pose.header.frame_id)
+                    # enable_touch_links.touch_links = list(set([request.pick.grasp_pose.header.frame_id + request.pick.allowed_touch_objects]))
+                    # self.apply_touch_links(enable_touch_links, TouchLinks())
                 if manip == ManipType.MANIP_MOVE_PLACE:
                     # compute place pose
                     move_pose_robot_base_frame = self.compute_manip_pose(request.place.place_pose)
@@ -720,6 +732,14 @@ class RobotClient(Node):
                         "place_pose_base_link",
                         is_static=True,
                     )
+                    # self.get_logger().warn(
+                    #     f"SETTING PLACE ALLOWED COLLISIONS TO {request.place.allowed_touch_objects}"
+                    # )
+                    # Add objects to ignore collision when placing
+                    enable_touch_links = TouchLinks()
+                    enable_touch_links.frame_id = request.object_id
+                    enable_touch_links.touch_links = list(set([request.place.place_pose.header.frame_id] + request.place.allowed_touch_objects))
+                    self.apply_touch_links(enable_touch_links, TouchLinks())
                 # with offset
                 if manip == ManipType.MANIP_MOVE_POSTGRASP:
                     # compute post-pick pose
@@ -817,6 +837,19 @@ class RobotClient(Node):
                     result.state.exec_message = "Failed to Move"
                     break
                 else:
+                    disable_touch_links = TouchLinks()
+                    if manip == ManipType.MANIP_MOVE_POSTGRASP:
+                        # Remove allowed collisions after grasping
+                        disable_touch_links.frame_id = request.object_id
+                        disable_touch_links.touch_links = list(set([request.pick.grasp_pose.header.frame_id] + request.disable_allowed_touch_objects_after_pick))
+                        self.apply_touch_links(TouchLinks(), disable_touch_links)
+                    ## FIXME(destogl): probably not needed --> remove if you see it commented out
+                    # if manip == ManipType.MANIP_MOVE_POSTPLACE:
+                    #     # Remove objects to ignore collision when placing
+                    #     disable_touch_links.frame_id = request.object_id
+                    #     disable_touch_links.touch_links = list(set([request.place.place_pose.header.frame_id + request.place.allowed_touch_objects]))
+                    self.apply_touch_links(TouchLinks(), disable_touch_links)
+
                     continue
             # Attach/Detach actions
             if manip in [
@@ -882,6 +915,7 @@ class RobotClient(Node):
                     if manip == ManipType.MANIP_RELEASE:
                         # if success detach
                         if not request.disable_scene_handling:
+                            # TODO(destogl): do we need here disable allowed collisions?
                             ret = self.detach(request.object_id)
                         else:
                             continue
@@ -937,6 +971,21 @@ class RobotClient(Node):
             self.get_logger().error(f"Detach object {id} has failed.")
             return False
         self.get_logger().info(f"Successfully detached object {id}.")
+        return True
+
+    def apply_touch_links(self, enable_touch_links: TouchLinks, disable_touch_links: TouchLinks):
+        # if empty - nothing to do :)
+        if not enable_touch_links.touch_links and not disable_touch_links.touch_links:
+            return True
+
+        req = ApplyTouchLinks.Request()
+        req.enable_touch_links = [enable_touch_links]
+        req.disable_touch_links = [disable_touch_links]
+        response: ApplyTouchLinks.Response = self.apply_touch_links_cli.call(req)
+        if response.result.state != ServiceResult.SUCCESS:
+            self.get_logger().error(f"Apply Touch Links has failed: '{response.result.message}'")
+            return False
+        self.get_logger().info(f"Successfully applied touch links.")
         return True
 
 
