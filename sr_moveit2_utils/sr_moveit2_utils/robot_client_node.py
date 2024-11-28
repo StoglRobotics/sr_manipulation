@@ -732,9 +732,9 @@ class RobotClient(Node):
                         "place_pose_base_link",
                         is_static=True,
                     )
-                    # self.get_logger().warn(
-                    #     f"SETTING PLACE ALLOWED COLLISIONS TO {request.place.allowed_touch_objects}"
-                    # )
+                    self.get_logger().warn(
+                        f"SETTING PLACE ALLOWED COLLISIONS TO {request.place.allowed_touch_objects}"
+                    )
                     # Add objects to ignore collision when placing
                     enable_touch_links = TouchLinks()
                     enable_touch_links.frame_id = request.object_id
