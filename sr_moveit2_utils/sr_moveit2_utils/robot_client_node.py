@@ -916,7 +916,7 @@ class RobotClient(Node):
                         # if success detach
                         if not request.disable_scene_handling:
                             # TODO(destogl): do we need here disable allowed collisions?
-                            ret = self.detach(request.object_id)
+                            ret = self.detach(request.object_id, request.place.place_pose.header.frame_id)
                         else:
                             continue
                         if not self.did_manip_plan_succeed(
@@ -963,9 +963,10 @@ class RobotClient(Node):
         self.get_logger().info(f"Successfully attached object {id} to {attach_link}.")
         return True
 
-    def detach(self, id: str):
+    def detach(self, id: str, detach_to_link: str = None):
         req = DetachObject.Request()
         req.id = id
+        req.detach_to_link = detach_to_link
         response: DetachObject.Response = self.detach_object_cli.call(req)
         if response.result.state != ServiceResult.SUCCESS:
             self.get_logger().error(f"Detach object {id} has failed.")
