@@ -840,6 +840,9 @@ class RobotClient(Node):
                     disable_touch_links = TouchLinks()
                     if manip == ManipType.MANIP_MOVE_POSTGRASP:
                         # Remove allowed collisions after grasping
+                        self.get_logger().warn(
+                                f"SETTING POSTGRASP DISALLOWED COLLISIONS TO {request.disable_allowed_touch_objects_after_pick}"
+                        )
                         disable_touch_links.frame_id = request.object_id
                         disable_touch_links.touch_links = list(set([request.pick.grasp_pose.header.frame_id] + request.disable_allowed_touch_objects_after_pick))
                         self.apply_touch_links(TouchLinks(), disable_touch_links)
