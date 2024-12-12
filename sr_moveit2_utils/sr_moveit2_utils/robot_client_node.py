@@ -120,13 +120,13 @@ class RobotClient(Node):
         self.scene_client = SceneManagerClient()
         self.get_logger().info("Init GripperClient ...")
         # Gripper handler
-        self.gripper_client = GripperClient(
-            # tf_prefix=self.tf_prefix,
-            # tcp_link_name=self.chain_tip_link,
-            driver_ns=self.gripper_driver_ns,
-            sim=sim,
-            # move_client=self.move_client,
-        )
+        # self.gripper_client = GripperClient(
+        #     # tf_prefix=self.tf_prefix,
+        #     # tcp_link_name=self.chain_tip_link,
+        #     driver_ns=self.gripper_driver_ns,
+        #     sim=sim,
+        #     # move_client=self.move_client,
+        # )
         # self.gripper_client = GripperClient(node=self, sim=self.sim, move_client=self.move_client, svc_cbg=self.service_callback_group, sub_cbg=self.subpub_callback_group)
         self.get_logger().info("Init action servers ...")
 
