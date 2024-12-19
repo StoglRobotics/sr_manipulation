@@ -758,19 +758,19 @@ class RobotClient(Node):
                             preempt_ok=(request.preempt_ok if request.preempt_ok else False),
                         )
 
-                    if not self.did_manip_plan_succeed(ret, "Reach", goal_handle):
-                        result.state.exec_state = PlanExecState.EXEC_ERROR
-                        result.state.exec_message = "Failed to reach"
-                        self.get_logger().warn(
-                            f"reach pre-place with ori {reach_pose_robot_base_frame.orientation} failed"
-                        )
-                        self.get_logger().warn(
-                            f"reach pre-place with pos {reach_pose_robot_base_frame.position} failed"
-                        )
+                if not self.did_manip_plan_succeed(ret, "Reach", goal_handle):
+                    result.state.exec_state = PlanExecState.EXEC_ERROR
+                    result.state.exec_message = "Failed to reach"
+                    self.get_logger().warn(
+                        f"reach pre-place with ori {reach_pose_robot_base_frame.orientation} failed"
+                    )
+                    self.get_logger().warn(
+                        f"reach pre-place with pos {reach_pose_robot_base_frame.position} failed"
+                    )
 
-                        break
-                    else:
-                        continue
+                    break
+                else:
+                    continue
 
             # move actions (cartesian)
             if manip in [
@@ -916,35 +916,28 @@ class RobotClient(Node):
                         preempt_ok=(request.preempt_ok if request.preempt_ok else False),
                     )
 
-                    if not self.did_manip_plan_succeed(ret, "Move", goal_handle):
-                        result.state.exec_state = PlanExecState.EXEC_ERROR
-                        result.state.exec_message = "Failed to Move"
-                        break
-                    else:
-                        disable_touch_links = TouchLinks()
-                        if manip == ManipType.MANIP_MOVE_POSTGRASP:
-                            # Remove allowed collisions after grasping
-                            self.get_logger().warn(
-                                    f"SETTING POSTGRASP DISALLOWED COLLISIONS TO {request.disable_allowed_touch_objects_after_pick}"
-                            )
-                            disable_touch_links.frame_id = request.object_id
-                            disable_touch_links.touch_links = list(set([request.pick.grasp_pose.header.frame_id] + request.disable_allowed_touch_objects_after_pick))
-                            self.apply_touch_links(TouchLinks(), disable_touch_links)
-                        ## FIXME(destogl): probably not needed --> remove if you see it commented out
-                        # if manip == ManipType.MANIP_MOVE_POSTPLACE:
-                        #     # Remove objects to ignore collision when placing
-                        #     disable_touch_links.frame_id = request.object_id
-                        #     disable_touch_links.touch_links = list(set([request.place.place_pose.header.frame_id + request.place.allowed_touch_objects]))
+                if not self.did_manip_plan_succeed(ret, "Move", goal_handle):
+                    result.state.exec_state = PlanExecState.EXEC_ERROR
+                    result.state.exec_message = "Failed to Move"
+                    break
+                else:
+                    disable_touch_links = TouchLinks()
+                    if manip == ManipType.MANIP_MOVE_POSTGRASP:
+                        # Remove allowed collisions after grasping
+                        self.get_logger().warn(
+                                f"SETTING POSTGRASP DISALLOWED COLLISIONS TO {request.disable_allowed_touch_objects_after_pick}"
+                        )
+                        disable_touch_links.frame_id = request.object_id
+                        disable_touch_links.touch_links = list(set([request.pick.grasp_pose.header.frame_id] + request.disable_allowed_touch_objects_after_pick))
                         self.apply_touch_links(TouchLinks(), disable_touch_links)
+                    self.apply_touch_links(TouchLinks(), disable_touch_links)
 
-                        continue
+                    continue
 
             # Execute the sequence
-            if manip == ManipType.EXECUTE_MOVE_SEQUENCE:
+            if manip == ManipType.EXECUTE_MOVE_SEQUENCE and len(self.move_sequence) > 0:
                 if not self.send_move_sequence_goal(timeout=self.wait_for_action_server_timeout):
                     goal_handle.abort()
-                else:
-                    goal_handle.succeed()
                 self.move_sequence = []
             
             # Attach/Detach actions
