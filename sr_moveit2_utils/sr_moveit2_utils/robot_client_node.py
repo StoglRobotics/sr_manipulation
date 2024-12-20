@@ -42,8 +42,8 @@ from rclpy.node import Node
 from rclpy.action import ActionServer, GoalResponse, CancelResponse, ActionClient
 from rclpy.action.server import ServerGoalHandle, GoalStatus
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
-from moveit_msgs.msg import Constraints, MotionSequenceItem, MoveItErrorCodes, OrientationConstraint, PositionConstraint
-from moveit_msgs.action import MoveGroupSequence, ExecuteTrajectory_GetResult_Response
+from moveit_msgs.msg import Constraints, MotionSequenceItem, MoveItErrorCodes, OrientationConstraint, PlanningOptions, PositionConstraint
+from moveit_msgs.action import MoveGroupSequence, ExecuteTrajectory_GetResult_Response, MoveGroupSequence_GetResult_Response
 from shape_msgs.msg import SolidPrimitive
 from sr_manipulation_interfaces.action import PlanMoveTo, Manip
 from sr_manipulation_interfaces.msg import (
@@ -605,7 +605,7 @@ class RobotClient(Node):
             apply_tool_offset,
         )
     
-    def create_move_seq_item(self, request: Manip.Goal, pose: Pose):
+    def create_move_seq_item(self, request: Manip.Goal, pose: Pose) -> MotionSequenceItem:
         item = MotionSequenceItem()
         item.blend_radius = request.blend_radius
         item.req.group_name = request.planning_group
@@ -1027,36 +1027,32 @@ class RobotClient(Node):
     def send_move_sequence_goal(self, timeout: Float64):
         goal = MoveGroupSequence.Goal()
         goal.request.items = self.move_sequence
+        goal.planning_options = PlanningOptions()
         goal.planning_options.planning_scene_diff.is_diff = True
         goal.planning_options.planning_scene_diff.robot_state.is_diff = True
+        self.get_logger().info(f"Goal request is:{goal}")
 
         if not self.move_sequence_action_client.wait_for_server(timeout):
             return False
 
-        send_goal_future = self.move_sequence_action_client.send_goal_async(goal)
-        rclpy.spin_until_future_complete(self, send_goal_future)
-        goal_handle = send_goal_future.result()
-        print("type goal_handle: ", type(goal_handle))
-        if not goal_handle.accepted:
-            self.get_logger().info('Move sequence got rejected by ActionServer')
+        goal_handle : MoveGroupSequence_GetResult_Response = self.move_sequence_action_client.send_goal(goal)
+        if not goal_handle.status == GoalStatus.STATUS_SUCCEEDED:
+            self.get_logger().info(f"Move sequence is not executed by ActionServer. Status: {goal_handle.status}")   
             return False
 
-        self.get_logger().info('Move sequence accepted by ActionServer)')
-
-        get_result_future: Future = goal_handle.get_result_async()
-        rclpy.spin_until_future_complete(self, get_result_future)
-        result: ExecuteTrajectory_GetResult_Response = get_result_future.result()
+        self.get_logger().info('Move sequence executed by ActionServer)')
+        
+        result: MoveGroupSequence.Result = goal_handle.result
         if not result:
             self.get_logger().error("No result received from the action server.")
             False
 
-        result_result: MoveGroupSequence.Result = result.result
-        if result_result.response.error_code.val == MoveItErrorCodes.SUCCESS:
+        if result.response.error_code.val == MoveItErrorCodes.SUCCESS:
             self.get_logger().info("Move sequence executed successfully.")
             return True
         else:
             self.get_logger().error(
-                f"Move sequence failed with error code: {result_result.response.error_code.val}"
+                f"Move sequence failed with error code: {result.response.error_code.val}"
             )
             return False
     
