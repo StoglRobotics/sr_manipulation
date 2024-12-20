@@ -1123,9 +1123,10 @@ def main(args=None):
     executor = MultiThreadedExecutor()
 
     mc = RobotClient()
+    executor.add_node(mc)
 
     try:
-        rclpy.spin(mc, executor)
+        executor.spin()
     except KeyboardInterrupt:
         pass
 
