@@ -41,6 +41,7 @@ set(srv_files
   srv/PublishPoseAsTF.srv
   srv/RemoveObjects.srv
   srv/GetObjectPose.srv
+  srv/MoveObject.srv
   srv/AttachObject.srv
   srv/DetachObject.srv
   srv/MoveToPose.srv
