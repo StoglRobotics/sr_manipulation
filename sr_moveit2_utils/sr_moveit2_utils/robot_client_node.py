@@ -1030,7 +1030,7 @@ class RobotClient(Node):
         goal.planning_options = PlanningOptions()
         goal.planning_options.planning_scene_diff.is_diff = True
         goal.planning_options.planning_scene_diff.robot_state.is_diff = True
-        self.get_logger().info(f"Goal request is:{goal}")
+        # self.get_logger().info(f"Goal request is:{goal}")
 
         if not self.move_sequence_action_client.wait_for_server(timeout):
             return False
