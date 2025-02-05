@@ -50,9 +50,7 @@ setup(
     tests_require=["pytest"],
     entry_points={
         "console_scripts": [
-            "scene_manager_node = sr_moveit2_utils.scene_manager_node:main",
             "robot_client_node = sr_moveit2_utils.robot_client_node:main",
-            "scene_manager_client = sr_moveit2_utils.scene_manager_client:main",
         ],
     },
 )

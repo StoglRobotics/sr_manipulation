@@ -1,6 +1,8 @@
 # Request
 string id
 string detach_to_link
+# whether the object should be moved also when the parent is moved
+string parent_object_id
 ---
 # Response
 ServiceResult result

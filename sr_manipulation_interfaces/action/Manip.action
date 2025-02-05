@@ -6,6 +6,9 @@ moveit_msgs/Grasp pick
 # Place description, can be partial for a single action
 moveit_msgs/PlaceLocation place
 
+# after release, make the object follow the parent object e.g. when the parent object is moved
+string parent_object_id_after_release
+
 # After an object is picked there might be links we have to enable collision between them again, as they were in allowed collision before being grasped
 string[] disable_allowed_touch_objects_after_pick
 

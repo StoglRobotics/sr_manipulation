@@ -217,7 +217,7 @@ class RobotClient(Node):
         self.default_gripper_cmd_action_name = None
         if gripper_cmd_action_names:
             self.default_gripper_cmd_action_name = gripper_cmd_action_names[0]
-      
+
         self.move_sequence : List[MotionSequenceItem] = []
         self.saved_plan = None
 
@@ -244,7 +244,7 @@ class RobotClient(Node):
         self.default_acceleration_scaling_factor = self.declare_parameter(
             "default_acceleration_scaling_factor", 0.1
         ).value
-        
+
         self.wait_for_action_server_timeout = self.declare_parameter(
             "wait_for_action_server_timeout", 5.0
         ).value
@@ -268,7 +268,7 @@ class RobotClient(Node):
 
                 # Gripper ActionClients
         self.action_client_callback_group = MutuallyExclusiveCallbackGroup()
-        if self.use_parallel_gripper: 
+        if self.use_parallel_gripper:
             self.gripper_clients = {
                 gripper_cmd_action_name: ActionClient(
                     self,
@@ -604,7 +604,7 @@ class RobotClient(Node):
             self.fixed_frame,
             apply_tool_offset,
         )
-    
+
     def create_move_seq_item(self, request: Manip.Goal, pose: Pose) -> MotionSequenceItem:
         item = MotionSequenceItem()
         item.blend_radius = request.blend_radius
@@ -883,7 +883,7 @@ class RobotClient(Node):
                         is_static=True,
                     )
 
-                
+
                 if request.add_to_blending_queue:
                     self.move_sequence.append(self.create_move_seq_item(request, move_pose_robot_base_frame))
                 else:
@@ -939,7 +939,7 @@ class RobotClient(Node):
                 if not self.send_move_sequence_goal(timeout=self.wait_for_action_server_timeout):
                     goal_handle.abort()
                 self.move_sequence = []
-            
+
             # Attach/Detach actions
             if manip in [
                 ManipType.MANIP_GRASP,
@@ -1005,7 +1005,8 @@ class RobotClient(Node):
                         # if success detach
                         if not request.disable_scene_handling:
                             # TODO(destogl): do we need here disable allowed collisions?
-                            ret = self.detach(request.object_id, request.place.place_pose.header.frame_id)
+                            ret = self.detach(request.object_id, request.place.place_pose.header.frame_id,
+                                              parent_object_id=request.parent_object_id_after_release)
                         else:
                             continue
                         if not self.did_manip_plan_succeed(
@@ -1022,7 +1023,7 @@ class RobotClient(Node):
             goal_handle.succeed()
         self.active_goal = None
         return result
-    
+
 
     def send_move_sequence_goal(self, timeout: Float64):
         goal = MoveGroupSequence.Goal()
@@ -1037,11 +1038,11 @@ class RobotClient(Node):
 
         goal_handle : MoveGroupSequence_GetResult_Response = self.move_sequence_action_client.send_goal(goal)
         if not goal_handle.status == GoalStatus.STATUS_SUCCEEDED:
-            self.get_logger().info(f"Move sequence is not executed by ActionServer. Status: {goal_handle.status}")   
+            self.get_logger().info(f"Move sequence is not executed by ActionServer. Status: {goal_handle.status}")
             return False
 
         self.get_logger().info('Move sequence executed by ActionServer)')
-        
+
         result: MoveGroupSequence.Result = goal_handle.result
         if not result:
             self.get_logger().error("No result received from the action server.")
@@ -1055,7 +1056,7 @@ class RobotClient(Node):
                 f"Move sequence failed with error code: {result.response.error_code.val}"
             )
             return False
-    
+
 
     def did_manip_plan_succeed(
         self, plan_exec_success: bool, action_name: str, goal_handle: ServerGoalHandle
@@ -1086,10 +1087,12 @@ class RobotClient(Node):
         self.get_logger().info(f"Successfully attached object {id} to {attach_link}.")
         return True
 
-    def detach(self, id: str, detach_to_link: str = None):
+    def detach(self, id: str, detach_to_link: str = None,
+               parent_object_id: str = None):
         req = DetachObject.Request()
         req.id = id
         req.detach_to_link = detach_to_link
+        req.parent_object_id = parent_object_id
         response: DetachObject.Response = self.detach_object_cli.call(req)
         if response.result.state != ServiceResult.SUCCESS:
             self.get_logger().error(f"Detach object {id} has failed.")

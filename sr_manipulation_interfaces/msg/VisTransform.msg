@@ -1,4 +1,0 @@
-geometry_msgs/Pose pose
-string frame_id
-string child_frame_id
-bool is_static

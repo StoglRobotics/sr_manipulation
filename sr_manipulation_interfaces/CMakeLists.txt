@@ -27,7 +27,6 @@ set(msg_files
   msg/ManipType.msg
   msg/MoveWaypoint.msg
   msg/TouchLinks.msg
-  msg/VisTransform.msg
 )
 
 set(action_files
