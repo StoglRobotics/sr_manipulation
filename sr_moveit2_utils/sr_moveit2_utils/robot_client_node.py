@@ -30,7 +30,7 @@
 #
 # Author Dr Denis Stogl, Guillaume Walck
 
-
+import time
 from copy import deepcopy
 from typing import List, Optional, Sequence
 
@@ -844,7 +844,11 @@ class RobotClient(Node):
                         # First, we handle gripper actions
                         gripper_cmd = GripperCommand.Goal()
                         gripper_cmd.command.position = 0.0
+                        self.get_logger().info("Waiting for gripper action server...")
                         self.gripper_clients[gripper_cmd_action_name].wait_for_server()
+                        self.get_logger().info("Sending release command to gripper...")
+                        self.gripper_clients[gripper_cmd_action_name].send_goal(gripper_cmd)
+                        self.get_logger().info("Gripper release command sent successfully.")
                         self.gripper_clients[gripper_cmd_action_name].send_goal(gripper_cmd)
 
                     # Additionally handle detach
@@ -890,7 +894,8 @@ class RobotClient(Node):
         req = AttachObject.Request()
         req.id = id
         req.link_name = attach_link
-        req.touch_links = allowed_touch_links
+        if allowed_touch_links:
+            req.touch_links = allowed_touch_links
         response: AttachObject.Response = self.attach_object_cli.call(req)
         if response.result.state != ServiceResult.SUCCESS:
             self.get_logger().error(f"Attach object {id} has failed.")

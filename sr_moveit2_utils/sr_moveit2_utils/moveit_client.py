@@ -27,7 +27,7 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 # based on moveit_clients.py, scene_client
-
+import time
 from dataclasses import dataclass
 from typing import Dict, List, Optional
 import rclpy
@@ -364,11 +364,11 @@ class MoveitClient:
         self._execute_trajectory_client.wait_for_server()
         goal = ExecuteTrajectory.Goal()
         goal.trajectory.joint_trajectory = joint_trajectory
-        if controller_names:
-            goal.controller_names = controller_names
-        self.node.get_logger().info(
-            f"Sending goal to execute trajectory with controller names: {goal.controller_names}"
-        )
+        # if controller_names:
+        #     goal.controller_names = controller_names
+        # self.node.get_logger().info(
+        #     f"Sending goal to execute trajectory with controller names: {goal.controller_names}"
+        # )
         exec_result: ExecuteTrajectory.Result = (
             self._execute_trajectory_client.send_goal(goal).result
         )
@@ -391,20 +391,20 @@ class MoveitClient:
         self._execute_trajectory_client.wait_for_server()
         goal = ExecuteTrajectory.Goal()
         goal.trajectory = plan
-        if controller_names:
-            goal.controller_names = controller_names
-        self.node.get_logger().info(
-            f"Sending goal to execute trajectory with controller names: {goal.controller_names}"
-        )
+        # if controller_names:
+        #     goal.controller_names = controller_names
+        # self.node.get_logger().info(
+        #     f"Sending goal to execute trajectory with controller names: {goal.controller_names}"
+        # )
         exec_result: ExecuteTrajectory.Result = (
             self._execute_trajectory_client.send_goal(goal).result
         )
-
         if preempt_ok and exec_result.error_code.val == MoveItErrorCodes.PREEMPTED:
             self.node.get_logger().info("Trajectory execution preempted (as expected).")
             return True
 
         if exec_result.error_code.val == MoveItErrorCodes.SUCCESS:
+            time.sleep(0.4)
             self.node.get_logger().info("Trajectory execution succeeded.")
             return True
         else:
