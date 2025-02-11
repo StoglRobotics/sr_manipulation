@@ -463,6 +463,7 @@ class MoveitClient:
             )
 
         goal.request = MotionPlanRequest()
+        # TODO(destogl) add workspace parameters to avoid MoveIt warning (use default from the scenario file)
         goal.request.group_name = planning_group
         goal.request.pipeline_id = profile.planning_pipeline
         goal.request.planner_id = profile.planner_id

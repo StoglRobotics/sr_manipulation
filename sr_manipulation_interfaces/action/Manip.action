@@ -5,16 +5,29 @@ string object_id
 moveit_msgs/Grasp pick
 # Place description, can be partial for a single action
 moveit_msgs/PlaceLocation place
+
+# after release, make the object follow the parent object e.g. when the parent object is moved
+string parent_object_id_after_release
+
+# After an object is picked there might be links we have to enable collision between them again, as they were in allowed collision before being grasped
+string[] disable_allowed_touch_objects_after_pick
+
 # During jaw closing and opening, the brick gets moved if there is any clearance between
 # the gripper fingers and the brick. This gripper translation gets performed right
 # before the gripper jaw movement, compensating for this
 moveit_msgs/GripperTranslation brick_grasp_clearance_compensation
+
 # type of manipulation actions to do based on ManipType enums
 int8[] manipulation_sequence
+
 # if true no attach/detach is performed
 bool disable_scene_handling
+
 # only plan, not execution
 bool only_plan
+float64 blend_radius
+bool add_to_blending_queue
+
 # enforce the planner profile (empty means use default)
 string planner_profile
 string planning_group
@@ -24,6 +37,7 @@ string gripper_cmd_action_name
 string[] controller_names
 float64 velocity_scaling_factor
 float64 acceleration_scaling_factor
+float64 allowed_planning_time
 bool preempt_ok
 ---
 # final state effectively reached
