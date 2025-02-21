@@ -450,7 +450,7 @@ class RobotClient(Node):
                 # do the actual planning and execution
 
                 if manip == ManipType.MANIP_REACH_PREGRASP:
-                    self.get_logger().debug("*********CONTEXT 2")
+                    self.get_logger().error("*********CONTEXT 2")
                     ret = self.move_client.send_move_request(
                         reach_pose_robot_base_frame,
                         cartesian_trajectory=False,
@@ -459,7 +459,7 @@ class RobotClient(Node):
                         ),
                     )
                 if manip == ManipType.MANIP_REACH_PREPLACE:
-                    self.get_logger().debug("********CONTEXT 3")
+                    self.get_logger().error("********CONTEXT 3")
                     ret = self.move_client.send_move_request(
                         reach_pose_robot_base_frame,
                         cartesian_trajectory=False,
@@ -581,7 +581,7 @@ class RobotClient(Node):
                     )
                 # perform the action
                 # do the actual planning and execution
-                self.get_logger().debug("*********CONTEXT 4")
+                self.get_logger().error("*********CONTEXT 4")
                 ret = self.move_client.send_move_request(
                     move_pose_robot_base_frame,
                     cartesian_trajectory=True,
