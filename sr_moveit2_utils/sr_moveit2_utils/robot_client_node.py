@@ -39,12 +39,10 @@ from rclpy.executors import MultiThreadedExecutor
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
 from rclpy.node import Node
 from rclpy.action import ActionServer, ActionClient, GoalResponse, CancelResponse
-
 from rclpy.action.server import ServerGoalHandle, GoalStatus
 
 from sr_manipulation_interfaces.action import PlanMoveTo, Manip
 from sr_manipulation_interfaces.msg import ManipType, PlanExecState
-
 from control_msgs.action import IOGripperCommand
 
 from geometry_msgs.msg import PoseStamped, Vector3Stamped, Pose
@@ -273,7 +271,6 @@ class RobotClient(Node):
                 velocity_scaling_factor = None
                 if target.velocity_scaling_factor != 0.0:
                     velocity_scaling_factor = target.velocity_scaling_factor
-                self.get_logger().error("CONTEXT 1")
                 ret = self.move_client.send_move_request(
                     pose,
                     cartesian_trajectory=target.cart,
@@ -450,7 +447,6 @@ class RobotClient(Node):
                 # do the actual planning and execution
 
                 if manip == ManipType.MANIP_REACH_PREGRASP:
-                    self.get_logger().error("*********CONTEXT 2")
                     ret = self.move_client.send_move_request(
                         reach_pose_robot_base_frame,
                         cartesian_trajectory=False,
@@ -459,7 +455,6 @@ class RobotClient(Node):
                         ),
                     )
                 if manip == ManipType.MANIP_REACH_PREPLACE:
-                    self.get_logger().error("********CONTEXT 3")
                     ret = self.move_client.send_move_request(
                         reach_pose_robot_base_frame,
                         cartesian_trajectory=False,
@@ -581,7 +576,6 @@ class RobotClient(Node):
                     )
                 # perform the action
                 # do the actual planning and execution
-                self.get_logger().error("*********CONTEXT 4")
                 ret = self.move_client.send_move_request(
                     move_pose_robot_base_frame,
                     cartesian_trajectory=True,

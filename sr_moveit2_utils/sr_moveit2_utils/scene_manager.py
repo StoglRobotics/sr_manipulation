@@ -394,8 +394,6 @@ class SceneManager(Node):
     def attach_object_cb(
         self, request: AttachObject.Request, response: AttachObject.Response
     ) -> AttachObject.Response:
-        response.result.state = ServiceResult.SUCCESS
-        """
         if request.id not in self.object_in_the_scene_storage:
             response.result.state = ServiceResult.NOTFOUND
             self.get_logger().warn("Scene Manager Object Not found")
@@ -403,11 +401,10 @@ class SceneManager(Node):
             ret = self.attach_object(request.id, request.link_name, request.touch_links)
             if ret:
                 self.get_logger().debug("Scene Manager Object attached")
-                
+                response.result.state = ServiceResult.SUCCESS
             else:
                 self.get_logger().warn("Scene Manager Object attach failed")
                 response.result.state = ServiceResult.FAILED
-        """
         return response
 
     # for more detailed info on attach, detach operations and planning scene please look at the link below
