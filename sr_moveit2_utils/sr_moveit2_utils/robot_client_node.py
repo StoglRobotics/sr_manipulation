@@ -43,7 +43,7 @@ from rclpy.action import ActionServer, GoalResponse, CancelResponse, ActionClien
 from rclpy.action.server import ServerGoalHandle, GoalStatus
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
 from moveit_msgs.msg import Constraints, MotionSequenceItem, MoveItErrorCodes, OrientationConstraint, PlanningOptions, PositionConstraint
-from moveit_msgs.action import MoveGroupSequence, ExecuteTrajectory_GetResult_Response, MoveGroupSequence_GetResult_Response
+from moveit_msgs.action import MoveGroupSequence, MoveGroupSequence_GetResult_Response
 from shape_msgs.msg import SolidPrimitive
 from sr_manipulation_interfaces.action import PlanMoveTo, Manip
 from sr_manipulation_interfaces.msg import (
