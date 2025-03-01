@@ -38,15 +38,16 @@ import rclpy
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
 from rclpy.node import Node
-from rclpy.action import ActionServer, GoalResponse, CancelResponse
+from rclpy.action import ActionServer, ActionClient, GoalResponse, CancelResponse
 from rclpy.action.server import ServerGoalHandle, GoalStatus
 
 from sr_manipulation_interfaces.action import PlanMoveTo, Manip
 from sr_manipulation_interfaces.msg import ManipType, PlanExecState
+from control_msgs.action import IOGripperCommand, SetIOGripperConfig
+from control_msgs.msg import DynamicInterfaceValues
 
 from geometry_msgs.msg import PoseStamped, Vector3Stamped, Pose
 
-from maurob_gripper.gripper_client import GripperClient
 from maurob_components.move_client import MoveClient
 from sr_moveit2_utils.scene_manager_client import SceneManagerClient
 from sr_ros2_python_utils.visualization_publishers import VisualizatonPublisher
@@ -118,16 +119,18 @@ class RobotClient(Node):
         )
 
         self.scene_client = SceneManagerClient()
-        self.get_logger().info("Init GripperClient ...")
-        # Gripper handler
-        # self.gripper_client = GripperClient(
-        #     # tf_prefix=self.tf_prefix,
-        #     # tcp_link_name=self.chain_tip_link,
-        #     driver_ns=self.gripper_driver_ns,
-        #     sim=sim,
-        #     # move_client=self.move_client,
-        # )
-        # self.gripper_client = GripperClient(node=self, sim=self.sim, move_client=self.move_client, svc_cbg=self.service_callback_group, sub_cbg=self.subpub_callback_group)
+        self.get_logger().info("Init Gripper Action Clients ...")
+        
+        self.gripper_commander = ActionClient(
+            self, IOGripperCommand, "/gripper/gripper_action"
+        )
+        
+        self.gripper_configure_commander = ActionClient(
+            self, SetIOGripperConfig, "/gripper/reconfigure_gripper_action"
+        )
+        self.gripper_states_subscriber = self.create_subscription(DynamicInterfaceValues, "/gripper/gripper_states", self._gripper_states_callback, 1)
+        self.sorted_gripper_states = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+        
         self.get_logger().info("Init action servers ...")
 
         # action servers
@@ -163,6 +166,26 @@ class RobotClient(Node):
         #
         # self.jtc_cmd_publisher = self.create_publisher(JointTrajectory, "/position_trajectory_controller/joint_trajectory", 1)
         # self.jtc_state_subscriber = self.create_subscription(JointTrajectoryControllerState, "/position_trajectory_controller/state", self._jtc_state_callback, 1)
+
+    def _gripper_states_callback(self, msg: DynamicInterfaceValues):
+                
+        for i, interface in enumerate(msg.states.interface_names):
+            if (interface == "EL1008/Stichmass_125mm_BG03"):
+                self.sorted_gripper_states[0] = msg.states.values[i]
+            elif (interface == "EL1008/Stichmass_250mm_BG04"):
+                self.sorted_gripper_states[1] = msg.states.values[i]
+            elif (interface == "EL2008/Stichmass_125_WQG5"):
+                self.sorted_gripper_states[2] = msg.states.values[i]
+            elif (interface == "EL1008/Hohenabfrage_BG5"):
+                self.sorted_gripper_states[3] = msg.states.values[i]
+            elif (interface == "EL1008/Bauteilabfrage_BG06"):
+                self.sorted_gripper_states[4] = msg.states.values[i]
+            elif (interface == "EL2008/Stichmass_250_WQG6"):
+                self.sorted_gripper_states[5] = msg.states.values[i]
+            elif (interface == "EL1008/Greifer_Geschloschen_BG02"):
+                self.sorted_gripper_states[6] = msg.states.values[i]
+            elif (interface == "EL1008/Greifer_Geoeffnet_BG01"):
+                self.sorted_gripper_states[7] = msg.states.values[i]
 
     def plan_move_to_goal_cb(self, goal: PlanMoveTo.Goal):
         self.get_logger().debug("Received new PlanMoveTo goal...")
@@ -352,7 +375,7 @@ class RobotClient(Node):
     ) -> Pose:
         pose_source_frame = deepcopy(source_pose)
         if use_offset:
-            offset_transformed = self.tcp_transforms.to_from_tcp_vec3_conversion(
+            offset_transformed = self.tcp_transforms.transform_vector3stamped_to_target_frame(
                 offset_dir, pose_source_frame.header.frame_id
             )
             #  add offset
@@ -608,20 +631,21 @@ class RobotClient(Node):
                     # TODO the gripper client, in addition to specific commands should also handle generic commands like a posture, which is then compatible to all moveit executors using a grasp posture
                     # apply on gripper
                     if (
-                        not self.gripper_client.sensor_status[1]
-                        and not self.gripper_client.sensor_status[3]
+                        self.sorted_gripper_states[7]
                     ):
                         self.get_logger().debug(" Close gripper.")
-                        gripper_response = self.gripper_client.send_close_request()
-                        if gripper_response is None:
-                            self.get_logger().error("Failed to close the gripper")
-                            result.state.exec_state = PlanExecState.EXEC_ERROR
-                            result.state.exec_message = "Failed to close gripper"
-                            goal_handle.abort()
-                            break
+                        goal_msg = IOGripperCommand.Goal()
+                        goal_msg.open = False
+                        self.gripper_commander.wait_for_server()
+                        response = self.gripper_commander.send_goal(goal_msg)
+                        # result_response is of type PlanMoveTo.Result()
+                        if response.result.success:
+                            self.get_logger().debug("Gripper command success!!")
+                        else:
+                            self.get_logger().warn(f"Gripper failed with state {response.result.message}")
                     else:
                         self.get_logger().warn(
-                            f" Not closing gripper due to status of sensor {self.gripper_client.sensor_status}"
+                            f" Not closing gripper due to status of sensor: {self.sorted_gripper_states}"
                         )
                     # additionally handle attach
                     if manip == ManipType.MANIP_GRASP:
@@ -645,20 +669,20 @@ class RobotClient(Node):
                     # prepare posture
                     # apply on gripper
                     if (
-                        not self.gripper_client.sensor_status[0]
-                        and not self.gripper_client.sensor_status[2]
+                        not self.sorted_gripper_states[7]
                     ):
                         self.get_logger().debug(" Open gripper.")
-                        gripper_response = self.gripper_client.send_open_request()
-                        if gripper_response is None:
-                            self.get_logger().error("Failed to open the gripper")
-                            result.state.exec_state = PlanExecState.EXEC_ERROR
-                            result.state.exec_message = "Failed to open gripper"
-                            goal_handle.abort()
-                            break
+                        goal_msg = IOGripperCommand.Goal()
+                        goal_msg.open = True
+                        self.gripper_commander.wait_for_server()
+                        response = self.gripper_commander.send_goal(goal_msg)
+                        if response.result.success:
+                            self.get_logger().debug("Gripper command success!!")
+                        else:
+                            self.get_logger().warn(f"Gripper failed with state {response.result.message}")     
                     else:
                         self.get_logger().warn(
-                            f" Not opening gripper due to status of sensor {self.gripper_client.sensor_status}"
+                            f" Not opening gripper due to status of sensor: {self.sorted_gripper_states}"
                         )
                     # additionally handle detach
                     if manip == ManipType.MANIP_RELEASE:
@@ -703,20 +727,21 @@ class RobotClient(Node):
                     if gauge_value > 0.125:  # large
                         # TODO move the test of the gripper state to the change_gauge function so that RobotClient does not have to know about status
                         if (
-                            self.gripper_client.sensor_status[4]
-                            and not self.gripper_client.sensor_status[5]
+                            self.sorted_gripper_states[0]
+                            and not self.sorted_gripper_states[1]
                         ):
-                            ret = self.gripper_client.change_gauge(wide=True)
-                            if ret.success is not True:
-                                self.get_logger().error(
-                                    f"Cannot adjust gripper, with error {ret.error_msg}"
-                                )
-                                result.state.exec_state = PlanExecState.EXEC_ERROR
-                                result.state.exec_message = ret.error_msg
-                                break
+                            self.get_logger().debug("Adjusting to wide gripper width.")
+                            goal_msg = SetIOGripperConfig.Goal()
+                            goal_msg.config_name = "stichmass_250"
+                            self.gripper_configure_commander.wait_for_server()
+                            response = self.gripper_configure_commander.send_goal(goal_msg)
+                            if response.result.result:
+                                self.get_logger().debug("Gripper configure command success!!")
+                            else:
+                                self.get_logger().warn(f"Gripper failed with state {response.result.status}")
                         elif (
-                            not self.gripper_client.sensor_status[4]
-                            and not self.gripper_client.sensor_status[5]
+                            not self.sorted_gripper_states[0]
+                            and not self.sorted_gripper_states[1]
                         ):
                             self.get_logger().error("Cannot adjust gripper, unknown state")
                             result.state.exec_state = PlanExecState.EXEC_ERROR
@@ -727,20 +752,21 @@ class RobotClient(Node):
 
                     else:  # small
                         if (
-                            not self.gripper_client.sensor_status[4]
-                            and self.gripper_client.sensor_status[5]
+                            not self.sorted_gripper_states[0]
+                            and self.sorted_gripper_states[1]
                         ):
-                            ret = self.gripper_client.change_gauge(wide=False)
-                            if ret.success is not True:
-                                self.get_logger().error(
-                                    f"Cannot adjust gripper, with error {ret.error_msg}"
-                                )
-                                result.state.exec_state = PlanExecState.EXEC_ERROR
-                                result.state.exec_message = ret.error_msg
-                                break
+                            self.get_logger().debug("Adjusting to narrow gripper width.")
+                            goal_msg = SetIOGripperConfig.Goal()
+                            goal_msg.config_name = "stichmass_125"
+                            self.gripper_configure_commander.wait_for_server()
+                            response = self.gripper_configure_commander.send_goal(goal_msg)
+                            if response.result.result:
+                                self.get_logger().debug("Gripper configure command success!!")
+                            else:
+                                self.get_logger().warn(f"Gripper failed with state {response.result.status}")
                         elif (
-                            not self.gripper_client.sensor_status[4]
-                            and not self.gripper_client.sensor_status[5]
+                            not self.sorted_gripper_states[0]
+                            and not self.sorted_gripper_states[1]
                         ):
                             self.get_logger().error("Cannot adjust gripper, unknown state")
                             result.state.exec_state = PlanExecState.EXEC_ERROR
